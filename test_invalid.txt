@@ -1,0 +1,2 @@
+This file format is not allowed for receipt uploads.
+It should be rejected by the frontend validation.
