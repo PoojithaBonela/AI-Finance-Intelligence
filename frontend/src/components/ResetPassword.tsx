@@ -1,19 +1,36 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import logoImg from "../assets/TracePaylogo.png";
+import { supabase } from "../lib/supabase";
 
 type ResetState = "EMAIL" | "SENT" | "NEW_PASSWORD" | "SUCCESS";
 
 export const ResetPassword: React.FC = () => {
   const [step, setStep] = useState<ResetState>("EMAIL");
   const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // New Password state
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  useEffect(() => {
+    // Automatically detect if the user arrives from a password reset email
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setStep("NEW_PASSWORD");
+        setError(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const maskEmail = (emailStr: string) => {
     if (!emailStr) return "";
@@ -23,18 +40,46 @@ export const ResetPassword: React.FC = () => {
     return `${maskedName}@${domain}`;
   };
 
-  const handleSendLink = (e: React.FormEvent) => {
-    e.preventDefault();
-    setStep("SENT");
+  const handleSendLink = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      setStep("SENT");
+    } catch (err: any) {
+      setError(err.message || "Failed to send reset link.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleUpdatePassword = (e: React.FormEvent) => {
+  const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      alert("Passwords do not match");
+      setError("Passwords do not match");
       return;
     }
-    setStep("SUCCESS");
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) throw error;
+      setStep("SUCCESS");
+    } catch (err: any) {
+      setError(err.message || "Failed to update password. Your link may have expired.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -45,6 +90,12 @@ export const ResetPassword: React.FC = () => {
         <div className="flex justify-center mb-5">
           <img src={logoImg} alt="TracePay" className="h-6 w-auto" />
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-600 text-xs font-semibold text-center">
+            {error}
+          </div>
+        )}
 
         {step === "EMAIL" && (
           <div className="animate-in fade-in duration-300">
@@ -70,9 +121,14 @@ export const ResetPassword: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full bg-[#7A9B6D] hover:bg-[#7A9B6D]/90 text-white font-bold py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98] text-sm"
+                disabled={loading}
+                className="w-full bg-[#7A9B6D] hover:bg-[#7A9B6D]/90 disabled:opacity-50 disabled:hover:bg-[#7A9B6D] text-white font-bold py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98] text-sm flex justify-center items-center h-[40px]"
               >
-                Send reset link
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  "Send reset link"
+                )}
               </button>
             </form>
           </div>
@@ -95,17 +151,15 @@ export const ResetPassword: React.FC = () => {
             
             <div className="mt-6 space-y-3">
               <button
-                onClick={() => setStep("NEW_PASSWORD")} // Simulating click from email
-                className="w-full bg-white border border-[#171A3A]/10 hover:bg-slate-50 text-[#171A3A] font-semibold py-2.5 px-4 rounded-xl shadow-sm transition-all text-sm"
+                onClick={() => handleSendLink()}
+                disabled={loading}
+                className="w-full bg-white border border-[#171A3A]/10 hover:bg-slate-50 disabled:opacity-50 text-[#171A3A] font-semibold py-2.5 px-4 rounded-xl shadow-sm transition-all text-sm flex justify-center items-center h-[40px]"
               >
-                Resend link
-              </button>
-              <p className="text-[10px] text-[#171A3A]/40 uppercase tracking-widest font-bold">For Preview:</p>
-              <button
-                onClick={() => setStep("NEW_PASSWORD")}
-                className="w-full bg-[#7A9B6D]/10 text-[#164A3A] font-bold py-2 px-4 rounded-xl text-xs hover:bg-[#7A9B6D]/20 transition-all"
-              >
-                Simulate clicking email link
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-[#171A3A]/30 border-t-[#171A3A] rounded-full animate-spin"></div>
+                ) : (
+                  "Resend link"
+                )}
               </button>
             </div>
           </div>
@@ -169,10 +223,14 @@ export const ResetPassword: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={!newPassword || newPassword !== confirmPassword}
-                className="w-full mt-2 bg-[#7A9B6D] hover:bg-[#7A9B6D]/90 disabled:opacity-50 disabled:hover:bg-[#7A9B6D] text-white font-bold py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98] text-sm"
+                disabled={loading || !newPassword || newPassword !== confirmPassword}
+                className="w-full mt-2 bg-[#7A9B6D] hover:bg-[#7A9B6D]/90 disabled:opacity-50 disabled:hover:bg-[#7A9B6D] text-white font-bold py-2.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98] text-sm flex justify-center items-center h-[40px]"
               >
-                Update password
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  "Update password"
+                )}
               </button>
             </form>
           </div>

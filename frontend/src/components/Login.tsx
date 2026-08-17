@@ -1,16 +1,54 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import logoImg from "../assets/TracePaylogo.png";
+import { supabase } from "../lib/supabase";
 
 export const Login: React.FC = () => {
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Auth logic will go here
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        if (signInError.message.toLowerCase().includes("email not confirmed")) {
+          throw new Error("Please verify your email address before logging in.");
+        }
+        throw signInError;
+      }
+      
+      // Navigate to the dashboard/receipts page on successful login
+      navigate("/receipts");
+    } catch (err: any) {
+      setError(err.message || "Invalid login credentials.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setError(null);
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google'
+      });
+      if (oauthError) throw oauthError;
+    } catch (err: any) {
+      setError(err.message || "Failed to initialize Google login.");
+    }
   };
 
   return (
@@ -27,6 +65,12 @@ export const Login: React.FC = () => {
           <h2 className="text-xl font-bold text-[#171A3A]">Sign In</h2>
           <p className="text-[#171A3A]/60 text-xs mt-1 font-support">Welcome back to your workspace</p>
         </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-600 text-xs font-semibold">
+            {error}
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -45,9 +89,9 @@ export const Login: React.FC = () => {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="block text-sm font-semibold text-[#171A3A]">Password</label>
-              <a href="#" className="text-xs font-semibold text-[#164A3A] hover:text-[#7A9B6D] transition-colors">
+              <Link to="/reset-password" className="text-xs font-semibold text-[#164A3A] hover:text-[#7A9B6D] transition-colors">
                 Forgot password?
-              </a>
+              </Link>
             </div>
             <div className="relative">
               <input
@@ -70,9 +114,14 @@ export const Login: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full bg-[#7A9B6D] hover:bg-[#7A9B6D]/90 text-white font-bold py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+            disabled={loading}
+            className="w-full bg-[#7A9B6D] hover:bg-[#7A9B6D]/90 disabled:opacity-50 disabled:hover:bg-[#7A9B6D] text-white font-bold py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98] flex justify-center items-center h-[44px]"
           >
-            Login
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            ) : (
+              "Login"
+            )}
           </button>
         </form>
 
@@ -86,7 +135,9 @@ export const Login: React.FC = () => {
         {/* Google Login */}
         <button
           type="button"
-          className="w-full bg-white border border-[#171A3A]/10 hover:bg-slate-50 text-[#171A3A] font-semibold py-2.5 px-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-3 active:scale-[0.98] text-sm"
+          onClick={handleGoogleLogin}
+          disabled={loading}
+          className="w-full bg-white border border-[#171A3A]/10 hover:bg-slate-50 text-[#171A3A] font-semibold py-2.5 px-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-3 active:scale-[0.98] text-sm disabled:opacity-50"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path
