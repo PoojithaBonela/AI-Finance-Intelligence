@@ -14,9 +14,9 @@ interface UploadedDoc {
   original_filename: string;
   file_type: string;
   image_count: number;
-  cloudinary_url: string;
   cloudinary_public_id: string;
   extracted_data: ExtractedReceiptData;
+  files: File[];
 }
 
 const MAX_IMAGES = 5;
@@ -131,8 +131,9 @@ export const UploadZone: React.FC = () => {
           ...data.document.extracted_data,
           field_confidences: data.document.extracted_data.field_confidences ?? {},
         },
+        files: selectedFiles,
       });
-      setSelectedFiles([]);
+      // We do NOT clear selectedFiles here anymore, we pass them down
       setDocType(null);
     } catch (err: any) {
       setErrorMsg(err.message || "An unexpected error occurred during receipt upload.");
@@ -156,10 +157,11 @@ export const UploadZone: React.FC = () => {
         cloudinaryUrl={successDoc.cloudinary_url}
         cloudinaryPublicId={successDoc.cloudinary_public_id}
         filename={successDoc.original_filename}
-        imageCount={successDoc.image_count}
+        initialFiles={successDoc.files}
         onClose={() => {
           setSuccessDoc(null);
           setUploadProgress(0);
+          setSelectedFiles([]);
         }}
       />
     );

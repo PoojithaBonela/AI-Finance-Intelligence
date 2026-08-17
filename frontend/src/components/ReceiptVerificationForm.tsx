@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   AlertTriangle,
   FileText,
@@ -33,6 +33,7 @@ export interface ExtractedReceiptData {
   payment_method?: string | null;
   warranty_period_days?: number | null;
   field_confidences: Record<string, number>;
+  is_incomplete?: boolean;
 }
 
 interface Props {
@@ -40,7 +41,7 @@ interface Props {
   cloudinaryUrl: string;
   cloudinaryPublicId?: string;
   filename: string;
-  imageCount: number;
+  initialFiles: File[];
   onClose: () => void;
 }
 
@@ -88,22 +89,20 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
   cloudinaryUrl,
   cloudinaryPublicId,
   filename,
-  imageCount,
+  initialFiles,
   onClose,
 }) => {
-  const fc = data.field_confidences ?? {};
-
-  const [merchantName, setMerchantName] = useState(data.merchant_name ?? "");
+  // Initialize state from props
+  const [merchantName, setMerchantName] = useState(data.merchant_name);
   const [purchaseDate, setPurchaseDate] = useState(data.purchase_date ?? "");
   const [dueDate, setDueDate] = useState(data.due_date ?? "");
   const [currency, setCurrency] = useState(data.currency ?? "");
-  const [tax, setTax] = useState(data.tax != null ? String(data.tax) : "");
-  const [totalAmount, setTotalAmount] = useState(String(data.total_amount ?? ""));
+  const [tax, setTax] = useState<string>(data.tax ? String(data.tax) : "");
+  const [totalAmount, setTotalAmount] = useState<string>(String(data.total_amount));
   const [paymentMethod, setPaymentMethod] = useState(data.payment_method ?? "");
-  const [warrantyDays, setWarrantyDays] = useState(
-    data.warranty_period_days != null ? String(data.warranty_period_days) : ""
-  );
-
+  const [warrantyDays, setWarrantyDays] = useState(data.warranty_period_days ? String(data.warranty_period_days) : "");
+  const [fc, setFc] = useState(data.field_confidences);
+  
   const toEditable = (items: ExtractedReceiptData["items"]): ReceiptItemEditable[] =>
     items.map((it, i) => ({
       id: String(i),
@@ -117,6 +116,28 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Upload missing part / multi-file state
+  const [files, setFiles] = useState<File[]>(initialFiles);
+  const [isUploadingMissingPart, setIsUploadingMissingPart] = useState(false);
+  const missingPartInputRef = useRef<HTMLInputElement>(null);
+
+  // Incomplete receipt state
+  const [currentIsIncomplete, setCurrentIsIncomplete] = useState(data.is_incomplete);
+  const [incompleteWarningDismissed, setIncompleteWarningDismissed] = useState(false);
+  const isIncomplete = data.is_incomplete && !incompleteWarningDismissed;
+
+  // Duplicate detection state
+  interface DupMatch {
+    id: string;
+    merchant_name: string;
+    purchase_date: string | null;
+    currency: string | null;
+    total_amount: number;
+    score: number;
+  }
+  const [dupMatch, setDupMatch] = useState<DupMatch | null>(null);
+  const [showDupModal, setShowDupModal] = useState(false);
 
   const formatCurrency = (val: string) => {
     if (!currency) return val;
@@ -181,26 +202,40 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
     return "invalid";
   };
 
-  const handleSave = async () => {
-    if (isSaving) return;
-    
-    if (!currency) {
-      setSaveError("Currency not detected. Please select the correct currency before saving.");
-      return;
+  // ── Duplicate check ────────────────────────────────────────────────────────
+  const checkDuplicate = async (normPurchaseDate: string | null): Promise<boolean> => {
+    try {
+      const res = await fetch("http://localhost:8000/api/receipts/check-duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchant_name: merchantName.trim(),
+          purchase_date: normPurchaseDate,
+          currency: currency.trim() || null,
+          total_amount: parseFloat(totalAmount) || 0,
+          items: items.map(it => ({
+            item_name: it.name.trim(),
+            quantity: it.quantity ? parseFloat(it.quantity) : null,
+            unit_price: it.unit_price ? parseFloat(it.unit_price) : null,
+            total_price: parseFloat(it.total_price) || 0,
+          })),
+        }),
+      });
+      if (!res.ok) return false; // if dup-check fails, let user proceed
+      const data = await res.json();
+      if (data.is_duplicate && data.match) {
+        setDupMatch(data.match);
+        setShowDupModal(true);
+        return true;
+      }
+      return false;
+    } catch {
+      return false; // network error — don't block save
     }
+  };
 
-    const normPurchaseDate = normalizeDate(purchaseDate);
-    if (normPurchaseDate === "invalid") {
-      setSaveError("Invalid Purchase Date. Please use a recognized format (e.g. YYYY-MM-DD or DD/MM/YYYY).");
-      return;
-    }
-    
-    const normDueDate = normalizeDate(dueDate);
-    if (normDueDate === "invalid") {
-      setSaveError("Invalid Due Date. Please use a recognized format (e.g. YYYY-MM-DD or DD/MM/YYYY).");
-      return;
-    }
-
+  // ── Perform actual save ───────────────────────────────────────────────────
+  const doSave = async (normPurchaseDate: string | null, normDueDate: string | null) => {
     setIsSaving(true);
     setSaveError(null);
 
@@ -235,13 +270,9 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
         const errorData = await response.json();
         const detail = errorData.detail;
         let errorMsg = "Failed to save receipt.";
-        if (typeof detail === "string") {
-          errorMsg = detail;
-        } else if (Array.isArray(detail)) {
-          errorMsg = detail.map((err: any) => `${err.loc?.join(".")}: ${err.msg}`).join(", ");
-        } else if (typeof detail === "object" && detail !== null) {
-          errorMsg = JSON.stringify(detail);
-        }
+        if (typeof detail === "string") errorMsg = detail;
+        else if (Array.isArray(detail)) errorMsg = detail.map((e: any) => `${e.loc?.join(".")}: ${e.msg}`).join(", ");
+        else if (typeof detail === "object" && detail !== null) errorMsg = JSON.stringify(detail);
         throw new Error(errorMsg);
       }
 
@@ -252,6 +283,102 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
       setSaveError(err.message || "An unexpected error occurred while saving.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Stored for use in "Save Anyway" path
+  const [pendingSaveDates, setPendingSaveDates] = useState<{ pd: string | null; dd: string | null } | null>(null);
+
+  const handleSave = async () => {
+    if (isSaving) return;
+
+    if (isIncomplete) {
+      setSaveError("Please resolve the incomplete receipt warning before saving.");
+      return;
+    }
+
+    if (!currency) {
+      setSaveError("Currency not detected. Please select the correct currency before saving.");
+      return;
+    }
+
+    const normPurchaseDate = normalizeDate(purchaseDate);
+    if (normPurchaseDate === "invalid") {
+      setSaveError("Invalid Purchase Date. Please use a recognized format (e.g. YYYY-MM-DD or DD/MM/YYYY).");
+      return;
+    }
+
+    const normDueDate = normalizeDate(dueDate);
+    if (normDueDate === "invalid") {
+      setSaveError("Invalid Due Date. Please use a recognized format (e.g. YYYY-MM-DD or DD/MM/YYYY).");
+      return;
+    }
+
+    // Store dates for Save Anyway path
+    setPendingSaveDates({ pd: normPurchaseDate, dd: normDueDate });
+
+    // Duplicate check
+    const isDup = await checkDuplicate(normPurchaseDate);
+    if (isDup) return; // modal shown — user decides
+
+    await doSave(normPurchaseDate, normDueDate);
+  };
+
+  const handleUploadMissingPart = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (files.length >= 5) return;
+
+    setIsUploadingMissingPart(true);
+    setSaveError(null);
+    try {
+      const formData = new FormData();
+      // Send ALL files together to Gemini
+      for (const f of files) {
+        formData.append("files", f);
+      }
+      formData.append("files", file);
+
+      const res = await fetch("http://localhost:8000/api/documents/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to process the multi-photo upload.");
+      }
+
+      const resData = await res.json();
+      const extracted = resData.document.extracted_data;
+
+      // Overwrite all fields with the new combined extraction
+      setMerchantName(extracted.merchant_name || "");
+      setPurchaseDate(extracted.purchase_date || "");
+      setDueDate(extracted.due_date || "");
+      setCurrency(extracted.currency || "");
+      setTax(extracted.tax ? String(extracted.tax) : "");
+      setTotalAmount(String(extracted.total_amount ?? "0"));
+      setPaymentMethod(extracted.payment_method || "");
+      setWarrantyDays(extracted.warranty_period_days ? String(extracted.warranty_period_days) : "");
+      setItems(toEditable(extracted.items || []));
+      setFc(extracted.field_confidences || {});
+
+      // Re-evaluate completeness
+      setCurrentIsIncomplete(extracted.is_incomplete);
+      
+      // Update our local files array
+      setFiles((prev) => [...prev, file]);
+
+      // If it's now complete, we can automatically dismiss the warning
+      if (!extracted.is_incomplete) {
+        setIncompleteWarningDismissed(true);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setSaveError(err.message || "Failed to process the new image.");
+    } finally {
+      setIsUploadingMissingPart(false);
+      if (missingPartInputRef.current) missingPartInputRef.current.value = "";
     }
   };
 
@@ -271,7 +398,8 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
 
   const missingFields = [
     { val: merchantName, label: "Merchant Name" },
-    { val: totalAmount, label: "Total Amount" }
+    { val: totalAmount, label: "Total Amount" },
+    { val: purchaseDate, label: "Purchase Date" }
   ].filter(f => !f.val).map(f => f.label);
 
   if (saved) {
@@ -294,6 +422,9 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
     );
   }
 
+  // ── Currency symbol helper ────────────────────────────────────────────────
+  const SYMBOLS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£", CAD: "C$", AUD: "A$" };
+  const symFor = (c: string | null) => (c ? (SYMBOLS[c] ?? c + " ") : "");
   const InputRow = ({ label, score, value, children }: { label: string; score?: number; value: any; children: React.ReactNode }) => {
     const isEmpty = value === "" || value === null || value === undefined;
     return (
@@ -316,27 +447,143 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto pt-6 pb-20 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      
-      {/* Header Section */}
+
+      {/* ── Duplicate Warning Modal ── */}
+      {showDupModal && dupMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#B8C5A3] rounded-3xl shadow-2xl p-8 space-y-6 border border-[#7A9B6D]">
+            {/* Icon + heading */}
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-amber-100 rounded-2xl shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h2 className="text-lg font-extrabold text-[#171A3A]">Receipt already exists.</h2>
+                <p className="text-sm text-[#164A3A] font-support mt-1">
+                  This receipt may already have been uploaded. Review the existing match below before deciding.
+                </p>
+              </div>
+            </div>
+
+            {/* Match details */}
+            <div className="bg-white rounded-2xl p-4 space-y-2 border border-[#7A9B6D]/30">
+              <p className="text-xs font-bold text-[#164A3A] uppercase tracking-widest mb-3">Existing Receipt</p>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500 font-semibold">Merchant</span>
+                <span className="font-bold text-[#171A3A]">{dupMatch.merchant_name}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500 font-semibold">Date</span>
+                <span className="font-semibold text-[#171A3A]">{dupMatch.purchase_date || "—"}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500 font-semibold">Currency</span>
+                <span className="font-semibold text-[#171A3A]">{dupMatch.currency || "—"}</span>
+              </div>
+              <div className="flex justify-between text-xs border-t border-slate-100 pt-2 mt-1">
+                <span className="text-slate-500 font-bold">Total</span>
+                <span className="font-extrabold text-[#0D7C66]">
+                  {symFor(dupMatch.currency)}{dupMatch.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 font-support pt-1">
+                Match confidence: {Math.round(dupMatch.score * 100)}%
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDupModal(false);
+                  setDupMatch(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-[#171A3A] bg-white border border-[#7A9B6D]/40 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowDupModal(false);
+                  setDupMatch(null);
+                  if (pendingSaveDates) {
+                    await doSave(pendingSaveDates.pd, pendingSaveDates.dd);
+                  }
+                }}
+                disabled={isSaving}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#7A9B6D] hover:bg-[#6B8C5E] transition-colors disabled:opacity-60"
+              >
+                {isSaving ? "Saving…" : "Save Anyway"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
         <div className="space-y-2">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-[#171A3A]">Review & Save Receipt</h1>
-          <p className="text-[#164A3A] font-support max-w-lg text-sm sm:text-base leading-relaxed">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-white">Review & Save Receipt</h1>
+          <p className="text-white/70 font-support max-w-lg text-sm sm:text-base leading-relaxed">
             We've extracted the details from your document. Please review the information below and make any necessary changes before saving.
           </p>
         </div>
-        <div className="bg-white/50 backdrop-blur-md border border-[#171A3A]/10 rounded-2xl p-5 flex items-start gap-4 min-w-[280px]">
-          <div className="text-[#0D7C66] mt-1">
+        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-5 flex items-start gap-4 min-w-[280px]">
+          <div className="text-white mt-1">
             <FileText className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs text-[#171A3A]/60 font-semibold uppercase tracking-wider mb-1">Document Type</p>
-            <p className="text-base font-bold text-[#171A3A] mb-3">Purchase Receipt</p>
-            <p className="text-[11px] text-[#171A3A]/50 font-support">Extracted on</p>
-            <p className="text-xs font-semibold text-[#171A3A]/80">{new Date().toLocaleString()}</p>
+            <p className="text-xs text-white/60 font-semibold uppercase tracking-wider mb-1">Document Type</p>
+            <p className="text-base font-bold text-white mb-3">Purchase Receipt</p>
+            <p className="text-[11px] text-white/50 font-support">Extracted on</p>
+            <p className="text-xs font-semibold text-white/80">{new Date().toLocaleString()}</p>
           </div>
         </div>
       </div>
+
+      {/* ── Incomplete Warning Banner ── */}
+      {isIncomplete && (
+        <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in zoom-in duration-300">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-amber-900 font-bold mb-1">Receipt information appears incomplete.</p>
+              <p className="text-sm text-amber-700 font-support">
+                {files.length >= 5 
+                  ? "The full receipt could not be detected even with 5 photos. Please verify the extracted fields manually."
+                  : "The uploaded image may not contain the full receipt. Please upload the complete receipt to ensure accurate extraction."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <button
+              onClick={() => setIncompleteWarningDismissed(true)}
+              className="px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 rounded-lg transition-colors whitespace-nowrap flex-1 sm:flex-none text-center"
+            >
+              Dismiss
+            </button>
+            {files.length < 5 && (
+              <>
+                <input
+                  type="file"
+                  ref={missingPartInputRef}
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleUploadMissingPart}
+                />
+                <button
+                  onClick={() => missingPartInputRef.current?.click()}
+                  disabled={isUploadingMissingPart}
+                  className="px-4 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm transition-colors whitespace-nowrap flex-1 sm:flex-none text-center disabled:opacity-70 flex items-center justify-center gap-2"
+                >
+                  {isUploadingMissingPart ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {isUploadingMissingPart ? "Processing..." : "Add another photo"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Review Banner */}
       {lowFields.length > 0 && (
@@ -351,12 +598,18 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
 
       {/* Missing Fields Banner */}
       {missingFields.length > 0 && (
-        <div className="bg-[#B8C5A3] rounded-2xl border border-[#7A9B6D] p-4 flex items-start gap-3 shadow-sm">
-          <AlertTriangle className="w-5 h-5 text-[#0D7C66] shrink-0 mt-0.5" />
-          <p className="text-sm text-[#0D7C66] font-support">
-            <span className="font-bold">Missing required fields:</span>{" "}
-            {missingFields.join(", ")}. Please fill them before saving.
-          </p>
+        <div className="bg-[#B8C5A3] rounded-2xl border border-[#7A9B6D] p-4 flex flex-col gap-2 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-[#171A3A] shrink-0 mt-0.5" />
+            <p className="text-sm text-[#171A3A] font-support">
+              <span className="font-bold">Missing required fields:</span> {missingFields.join(", ")}. Please fill them in before saving.
+            </p>
+          </div>
+          {!purchaseDate && (
+            <div className="ml-8 text-sm text-amber-900 bg-amber-50 rounded-lg p-2 border border-amber-200">
+              <span className="font-bold">Purchase date not detected.</span> Please select the correct date.
+            </div>
+          )}
         </div>
       )}
 

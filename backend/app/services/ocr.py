@@ -90,6 +90,13 @@ class ReceiptExtraction(BaseModel):
             "Null when not clearly present. Never guess."
         )
     )
+    is_incomplete: bool = Field(
+        default=False,
+        description=(
+            "True if there are visual signs of an incomplete upload (e.g. receipt continuing beyond the image boundary, "
+            "cut-off top/bottom, truncated item list, missing final totals). False if the receipt appears fully visible."
+        )
+    )
     field_confidences: FieldConfidences = Field(
         description=(
             "Per-field confidence scores from 0.0 (uncertain) to 1.0 (certain). "
@@ -120,16 +127,27 @@ def process_document_gemini(parts: list) -> dict:
     try:
         prompt = """
 You are a receipt-parsing engine. Your job is to extract structured data from any
-purchase document, regardless of type (grocery, restaurant, food-delivery, e-commerce,
-ride, hotel, electronics, handwritten cash memo, utility bill, subscription bill,
-service bill, etc.).
+purchase document.
 
-When multiple images are provided, they are segments of the same physical receipt.
-Treat them as one continuous document. Handle overlapping photos using SEQUENCE-LEVEL deduplication:
-- Identify overlapping regions using multiple consecutive receipt elements (e.g., sequence of item names, quantities, prices, totals, and surrounding layout).
-- If a contiguous sequence appears in both images, treat the repeated portion as an overlap and include those items only once.
-- DO NOT deduplicate an item merely because the same product name appears twice (the same product can be purchased legitimately multiple times).
-- Only remove duplicates when there is strong evidence that the repeated sequence represents the exact same physical section of the receipt.
+*** CRITICAL FIRST STEP: COMPLETENESS CHECK ***
+Before extracting data, visually inspect the edges and bottom of the receipt.
+Set `is_incomplete` to TRUE if ANY of these are true:
+- The receipt is cut off at the bottom or top (e.g. text is sliced).
+- The items list ends abruptly without a subtotal or total.
+- Essential receipt parts (like the final Total Amount) are visibly out of frame.
+- The receipt visibly continues beyond the edge of the photograph.
+If the entire receipt from top to bottom is visible, set it to FALSE.
+
+When multiple images are provided, they are segments of the same physical receipt, BUT THEY MAY BE UPLOADED OUT OF ORDER.
+Before extraction, you MUST:
+- Analyze all uploaded images together.
+- Determine the correct logical page/image order using visual continuity, text continuation, item sequence, receipt edges, overlapping content, and header/footer structure.
+- Mentally reconstruct the images in the correct chronological order to form one continuous receipt.
+- Handle overlapping photos using SEQUENCE-LEVEL deduplication:
+  - Identify overlapping regions using multiple consecutive receipt elements.
+  - DO NOT deduplicate an item merely because the same product name appears twice.
+  - Only remove duplicates when there is strong evidence of an overlap in the reconstructed order.
+
 Before extracting, mentally classify every line on the document into exactly one bucket:
   (A) Purchased item – a distinct good or service the customer actively chose to acquire.
       Examples: "Paneer Butter Masala", "Men's T-Shirt", "Cab ride to Airport", "Room charge 1 night"
@@ -159,18 +177,27 @@ Extraction rules:
    Do NOT calculate it.
 4. currency – infer from symbols (₹→INR, $→USD, €→EUR) or text. Detect only when
    clearly identifiable. If ambiguous or not present, return null. Do NOT assume
-   USD, INR, or any default currency. Never perform currency conversion or alter
-   monetary values. Preserve the exact numeric amounts printed on the receipt.
-5. quantity – set to 1 only when a single-unit purchase is unambiguous. Otherwise null.
-6. All optional fields (currency, purchase_date, due_date, unit_price, quantity, tax,
+   USD, INR, or any default currency.
+5. NUMERICS & LOCALE FORMATS – Preserve monetary values exactly as printed on the receipt.
+   Correctly interpret locale-specific decimal separators (e.g., 43.000 vs 13,500) based on
+   the context of the receipt. Do not arbitrarily remove or add zeros. Never invent missing digits,
+   items, totals, or subtotals.
+6. quantity – set to 1 only when a single-unit purchase is unambiguous. Otherwise null.
+7. All optional fields (currency, purchase_date, due_date, unit_price, quantity, tax,
    payment_method, warranty_period_days) must be null when not clearly present.
    Never guess or infer.
-7. Zero-item documents: utility bills (electricity, water, gas), subscription invoices,
+8. Zero-item documents: utility bills (electricity, water, gas), subscription invoices,
    and simple service bills often have no discrete purchased goods — only tariff
    components that all belong to bucket (B). For these documents items[] MUST be an
    empty array []. Do not populate items[] with billing components, and do not
    fabricate a synthetic item to represent the billed service.
-9. field_confidences: for every top-level field in the output, assign a confidence
+9. COMPLETENESS CHECK – Before returning extraction results, check whether the entire
+   receipt/document is visible. Detect visual signs of an incomplete upload: receipt
+   continuing beyond the image boundary, cut-off bottom/top, truncated item list,
+   missing final totals, or clearly missing sections. Set `is_incomplete` to true if
+   it appears incomplete, otherwise false. Do not treat extracted data as complete
+   if the receipt is cut off.
+10. field_confidences: for every top-level field in the output, assign a confidence
    score from 0.0 to 1.0:
      1.0  → clearly and unambiguously printed
      0.9+ → printed but minor legibility issue

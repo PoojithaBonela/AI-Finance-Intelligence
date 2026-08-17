@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import supabase_client
-from .routers import upload, receipts
+from .routers import upload, receipts, exchange
 
 # Configure logging
 logging.basicConfig(
@@ -38,6 +38,7 @@ app.add_middleware(
 # Include routes
 app.include_router(upload.router)
 app.include_router(receipts.router)
+app.include_router(exchange.router)
 
 @app.get("/")
 async def root():
