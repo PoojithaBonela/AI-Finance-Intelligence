@@ -1,10 +1,13 @@
 import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { UploadZone } from "./components/UploadZone";
 import { Navbar } from "./components/Navbar";
 import { Sparkles, ScanLine, ShieldCheck } from "lucide-react";
 import { ReceiptsList } from "./components/ReceiptsList";
 import { PurchasesList } from "./components/PurchasesList";
+import { Login } from "./components/Login";
+import { Signup } from "./components/Signup";
+import { ResetPassword } from "./components/ResetPassword";
 import billsimage from "./assets/billsimage.png";
 
 function UploadPage() {
@@ -106,24 +109,32 @@ function UploadPage() {
 }
 
 function App() {
+  const location = useLocation();
+  const isAuthPage = ["/login", "/signup", "/reset-password"].includes(location.pathname);
+
   return (
     <div className="flex flex-col min-h-screen bg-[#11152F] text-white relative overflow-hidden">
       {/* Global Moving Turquoise Gradient */}
       <div className="absolute top-[-20%] left-[-10%] w-[120%] h-[1200px] bg-gradient-to-br from-transparent via-[#00BFA6]/15 to-[#55D6C2]/10 blur-[120px] rounded-full pointer-events-none animate-pan z-0"></div>
       
       <div className="relative z-10 flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-1 pb-16 flex flex-col">
+        {!isAuthPage && <Navbar />}
+        <main className={`flex-1 flex flex-col ${isAuthPage ? '' : 'pb-16'}`}>
           <Routes>
             <Route path="/" element={<Navigate to="/upload" replace />} />
             <Route path="/upload" element={<UploadPage />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/receipts" element={<ReceiptsList />} />
             <Route path="/purchases" element={<PurchasesList />} />
           </Routes>
         </main>
-        <footer className="py-6 text-center text-xs text-white/40 font-support">
-          &copy; {new Date().getFullYear()} TracePay Intelligence. All rights reserved.
-        </footer>
+        {!isAuthPage && (
+          <footer className="py-6 text-center text-xs text-white/40 font-support">
+            &copy; {new Date().getFullYear()} TracePay Intelligence. All rights reserved.
+          </footer>
+        )}
       </div>
     </div>
   );
