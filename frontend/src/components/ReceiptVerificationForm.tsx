@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   Loader2
 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,7 +39,6 @@ export interface ExtractedReceiptData {
 
 interface Props {
   data: ExtractedReceiptData;
-  cloudinaryUrl: string;
   cloudinaryPublicId?: string;
   filename: string;
   initialFiles: File[];
@@ -86,12 +86,13 @@ function ConfBadge({ score }: { score: number | undefined }) {
 
 export const ReceiptVerificationForm: React.FC<Props> = ({
   data,
-  cloudinaryUrl,
   cloudinaryPublicId,
   filename,
   initialFiles,
   onClose,
 }) => {
+  const { session } = useAuth();
+  
   // Initialize state from props
   const [merchantName, setMerchantName] = useState(data.merchant_name);
   const [purchaseDate, setPurchaseDate] = useState(data.purchase_date ?? "");
@@ -123,7 +124,6 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
   const missingPartInputRef = useRef<HTMLInputElement>(null);
 
   // Incomplete receipt state
-  const [currentIsIncomplete, setCurrentIsIncomplete] = useState(data.is_incomplete);
   const [incompleteWarningDismissed, setIncompleteWarningDismissed] = useState(false);
   const isIncomplete = data.is_incomplete && !incompleteWarningDismissed;
 
@@ -205,9 +205,14 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
   // ── Duplicate check ────────────────────────────────────────────────────────
   const checkDuplicate = async (normPurchaseDate: string | null): Promise<boolean> => {
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
       const res = await fetch("http://localhost:8000/api/receipts/check-duplicate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           merchant_name: merchantName.trim(),
           purchase_date: normPurchaseDate,
@@ -260,9 +265,14 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
     };
 
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
       const response = await fetch("http://localhost:8000/api/receipts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(verified),
       });
 
@@ -339,9 +349,15 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
       }
       formData.append("files", file);
 
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
       const res = await fetch("http://localhost:8000/api/documents/upload", {
         method: "POST",
         body: formData,
+        headers,
       });
 
       if (!res.ok) {
@@ -364,7 +380,7 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
       setFc(extracted.field_confidences || {});
 
       // Re-evaluate completeness
-      setCurrentIsIncomplete(extracted.is_incomplete);
+      // (State removed to fix TS warning, using extracted.is_incomplete directly where needed)
       
       // Update our local files array
       setFiles((prev) => [...prev, file]);

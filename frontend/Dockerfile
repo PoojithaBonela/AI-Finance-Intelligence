@@ -1,22 +1,30 @@
-FROM node:20-alpine AS builder
+# Build stage
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
+COPY package.json package-lock.json* ./
 RUN npm install
 
-# Build frontend
 COPY . .
+
+# Pass build args to the vite build step
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 RUN npm run build
 
-# Serve with Nginx
+# Production stage
 FROM nginx:alpine
-# Copy custom Nginx configuration to support React Router SPA fallback
-COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy compiled assets from builder
-COPY --from=builder /app/dist /usr/share/nginx/html
+# Copy built assets from build stage
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Copy custom nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 

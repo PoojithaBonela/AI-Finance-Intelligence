@@ -20,7 +20,7 @@ export const ResetPassword: React.FC = () => {
 
   useEffect(() => {
     // Automatically detect if the user arrives from a password reset email
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
         setStep("NEW_PASSWORD");
         setError(null);

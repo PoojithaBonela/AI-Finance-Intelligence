@@ -1,10 +1,11 @@
 import os
 from typing import List
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
 from google.genai import types
 from ..services.cloudinary_service import upload_to_cloudinary, delete_from_cloudinary
 from ..services.ocr import process_document_gemini
 from ..services.validation_service import validate_documents, DocumentValidationResult
+from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -17,7 +18,7 @@ MAX_MULTI_UPLOAD = 5
 
 
 @router.post("/upload")
-async def upload_document(files: List[UploadFile] = File(...)):
+async def upload_document(files: List[UploadFile] = File(...), user_id: str = Depends(get_current_user)):
     # ------------------------------------------------------------------ #
     # STEP 1 — Count and coarse-type validation
     # ------------------------------------------------------------------ #

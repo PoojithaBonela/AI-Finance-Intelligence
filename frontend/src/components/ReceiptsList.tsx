@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, FileText, UploadCloud, ReceiptText, Loader2, X, ChevronDown } from "lucide-react";
+import { Search, UploadCloud, ReceiptText, Loader2, X, ChevronDown } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 // Types
 interface Receipt {
@@ -78,10 +79,10 @@ function FilterDropdown({
 }
 
 export const ReceiptsList: React.FC = () => {
+  const { session } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   
   // Filter state
   const [dateSort, setDateSort] = useState<"latest" | "oldest" | null>(null);
@@ -95,18 +96,20 @@ export const ReceiptsList: React.FC = () => {
   // Lightbox modal state
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  const filters = ["All", "Latest", "This Month", "This Year"];
-
   useEffect(() => {
     const fetchReceipts = async () => {
       try {
         setLoading(true);
-        const res = await fetch("http://localhost:8000/api/receipts");
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+        const res = await fetch("http://localhost:8000/api/receipts", { headers });
         if (!res.ok) throw new Error("Failed to fetch receipts.");
         const data = await res.json();
         setReceipts(data);
       } catch (err: any) {
-        setError(err.message || "An error occurred.");
+        console.error(err.message || "An error occurred.");
       } finally {
         setLoading(false);
       }
@@ -129,9 +132,13 @@ export const ReceiptsList: React.FC = () => {
             items: [],
           })),
         };
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
         const res = await fetch("http://localhost:8000/api/convert-receipts", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(payload),
         });
         if (res.ok) {

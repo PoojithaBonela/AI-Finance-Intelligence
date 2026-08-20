@@ -1,5 +1,6 @@
 import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { UploadZone } from "./components/UploadZone";
 import { Navbar } from "./components/Navbar";
 import { Sparkles, ScanLine, ShieldCheck } from "lucide-react";
@@ -108,7 +109,25 @@ function UploadPage() {
   );
 }
 
-function App() {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { session, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center min-h-screen">
+        <div className="w-8 h-8 border-4 border-[#7A9B6D]/30 border-t-[#7A9B6D] rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+  
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return <>{children}</>;
+}
+
+function AppContent() {
   const location = useLocation();
   const isAuthPage = ["/login", "/signup", "/reset-password"].includes(location.pathname);
 
@@ -126,8 +145,8 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/receipts" element={<ReceiptsList />} />
-            <Route path="/purchases" element={<PurchasesList />} />
+            <Route path="/receipts" element={<ProtectedRoute><ReceiptsList /></ProtectedRoute>} />
+            <Route path="/purchases" element={<ProtectedRoute><PurchasesList /></ProtectedRoute>} />
           </Routes>
         </main>
         {!isAuthPage && (
@@ -137,6 +156,14 @@ function App() {
         )}
       </div>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

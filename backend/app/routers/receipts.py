@@ -1,7 +1,8 @@
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from ..schemas.receipts import ReceiptCreate, ReceiptResponse
 from ..database import supabase_client
+from ..dependencies import get_current_user
 from pydantic import BaseModel
 import logging
 
@@ -121,7 +122,7 @@ def _score_pair(new: DupCheckRequest, existing: dict, existing_items: list) -> f
 
 
 @router.post("/check-duplicate", response_model=DupCheckResponse)
-async def check_duplicate(body: DupCheckRequest):
+async def check_duplicate(body: DupCheckRequest, user_id: str = Depends(get_current_user)):
     """
     Compare the incoming receipt against all saved receipts.
     Returns is_duplicate=True and the best match if composite score ≥ 0.85.
@@ -132,7 +133,7 @@ async def check_duplicate(body: DupCheckRequest):
     try:
         res = supabase_client.table("receipts").select(
             "id, merchant_name, purchase_date, currency, total_amount, items:receipt_items(item_name, total_price)"
-        ).execute()
+        ).eq("user_id", user_id).execute()
         existing = res.data or []
     except Exception as e:
         logger.error(f"check-duplicate DB error: {e}")
@@ -167,7 +168,7 @@ async def check_duplicate(body: DupCheckRequest):
 
 
 @router.post("", response_model=ReceiptResponse, status_code=status.HTTP_201_CREATED)
-async def create_receipt(receipt_in: ReceiptCreate):
+async def create_receipt(receipt_in: ReceiptCreate, user_id: str = Depends(get_current_user)):
     if not supabase_client:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -179,6 +180,7 @@ async def create_receipt(receipt_in: ReceiptCreate):
     
     # Supabase Date types need ISO strings, pydantic handles date serialization if we do model_dump(mode='json')
     receipt_data = receipt_in.model_dump(exclude={"items"}, exclude_none=True, mode='json')
+    receipt_data["user_id"] = user_id
 
     try:
         # Insert receipt
@@ -219,7 +221,7 @@ async def create_receipt(receipt_in: ReceiptCreate):
         )
 
 @router.get("", response_model=List[ReceiptResponse])
-async def get_receipts():
+async def get_receipts(user_id: str = Depends(get_current_user)):
     if not supabase_client:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -230,7 +232,7 @@ async def get_receipts():
         # Fetch receipts and their nested receipt_items
         # Since we just created the table via raw SQL, the foreign key relation is named 'receipt_items_receipt_id_fkey'.
         # In PostgREST, we can just do 'receipt_items(*)' to join it.
-        res = supabase_client.table("receipts").select("*, items:receipt_items(*)").order("created_at", desc=True).execute()
+        res = supabase_client.table("receipts").select("*, items:receipt_items(*)").eq("user_id", user_id).order("created_at", desc=True).execute()
         return res.data
     except Exception as e:
         logger.error(f"Error fetching receipts: {e}")

@@ -31,7 +31,7 @@ export const Signup: React.FC = () => {
     setError(null);
     
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
         options: {

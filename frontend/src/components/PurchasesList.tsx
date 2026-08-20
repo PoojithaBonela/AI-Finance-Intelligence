@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, FileText, ExternalLink, RefreshCw, X, ChevronDown } from "lucide-react";
 import { useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ReceiptItem {
@@ -61,6 +62,7 @@ function fmtAmt(val: number, code: string | null): string {
 
 // ── Component ──────────────────────────────────────────────────────────────
 export const PurchasesList: React.FC = () => {
+  const { session } = useAuth();
   const [receipts, setReceipts]               = useState<Receipt[]>([]);
   const [loading, setLoading]                 = useState(true);
   const [error, setError]                     = useState<string | null>(null);
@@ -77,11 +79,15 @@ export const PurchasesList: React.FC = () => {
 
   // ── Fetch receipts ──────────────────────────────────────────────────────
   const fetchReceipts = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await fetch("http://localhost:8000/api/receipts");
-      if (!res.ok) throw new Error("Failed to fetch purchases data.");
+      try {
+        setLoading(true);
+        setError(null);
+        const headers: Record<string, string> = {};
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+        const res = await fetch("http://localhost:8000/api/receipts", { headers });
+        if (!res.ok) throw new Error("Failed to fetch purchases data.");
       const data: Receipt[] = await res.json();
       setReceipts(data);
     } catch (err: any) {
@@ -160,9 +166,14 @@ export const PurchasesList: React.FC = () => {
           })),
         };
 
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+
         const res = await fetch("http://localhost:8000/api/convert-receipts", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(payload),
         });
 

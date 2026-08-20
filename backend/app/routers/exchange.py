@@ -15,10 +15,11 @@ Endpoint: POST /api/convert-receipts
 
 import logging
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from ..dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ def _round2(v: Optional[float]) -> Optional[float]:
 # --------------------------------------------------------------------------- #
 
 @router.post("/convert-receipts", response_model=ConvertResponse)
-async def convert_receipts(body: ConvertRequest) -> ConvertResponse:
+async def convert_receipts(body: ConvertRequest, user_id: str = Depends(get_current_user)) -> ConvertResponse:
     target = body.target_currency.upper()
     results: list[ReceiptConverted] = []
 

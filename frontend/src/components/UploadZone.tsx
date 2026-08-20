@@ -1,19 +1,16 @@
 import React, { useState, useRef } from "react";
 import { Upload, FileImage, FileText, AlertCircle, Loader2, Images } from "lucide-react";
 import { ReceiptVerificationForm, type ExtractedReceiptData } from "./ReceiptVerificationForm";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
-interface ValidationResult {
-  is_valid_purchase_document: boolean;
-  is_single_document: boolean;
-  is_native_digital: boolean;
-  rejection_reason: string | null;
-  confidence: number;
-}
+
 
 interface UploadedDoc {
   original_filename: string;
   file_type: string;
   image_count: number;
+  cloudinary_url: string;
   cloudinary_public_id: string;
   extracted_data: ExtractedReceiptData;
   files: File[];
@@ -23,6 +20,8 @@ const MAX_IMAGES = 5;
 const MAX_BYTES = 10 * 1024 * 1024;
 
 export const UploadZone: React.FC = () => {
+  const { session } = useAuth();
+  const navigate = useNavigate();
   const [dragActiveType, setDragActiveType] = useState<"physical" | "digital" | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [docType, setDocType] = useState<"physical" | "digital" | null>(null);
@@ -30,6 +29,7 @@ export const UploadZone: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successDoc, setSuccessDoc] = useState<UploadedDoc | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const fileInputRefPhysical = useRef<HTMLInputElement>(null);
   const fileInputRefDigital = useRef<HTMLInputElement>(null);
@@ -43,6 +43,10 @@ export const UploadZone: React.FC = () => {
 
   // ── File validation ────────────────────────────────────────────────────────
   const validateAndSetFiles = (incoming: File[], type: "physical" | "digital") => {
+    if (!session) {
+      setShowAuthModal(true);
+      return;
+    }
     setErrorMsg(null);
     setSuccessDoc(null);
 
@@ -91,6 +95,10 @@ export const UploadZone: React.FC = () => {
   };
 
   const triggerFileInput = (type: "physical" | "digital") => {
+    if (!session) {
+      setShowAuthModal(true);
+      return;
+    }
     if (isUploading) return;
     if (type === "physical") fileInputRefPhysical.current?.click();
     else fileInputRefDigital.current?.click();
@@ -111,7 +119,16 @@ export const UploadZone: React.FC = () => {
     }, 180);
 
     try {
-      const response = await fetch("/api/documents/upload", { method: "POST", body: formData });
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
+      const response = await fetch("/api/documents/upload", { 
+        method: "POST", 
+        body: formData,
+        headers
+      });
       clearInterval(tick);
       const data = await response.json();
 
@@ -154,7 +171,6 @@ export const UploadZone: React.FC = () => {
     return (
       <ReceiptVerificationForm
         data={successDoc.extracted_data}
-        cloudinaryUrl={successDoc.cloudinary_url}
         cloudinaryPublicId={successDoc.cloudinary_public_id}
         filename={successDoc.original_filename}
         initialFiles={successDoc.files}
@@ -307,6 +323,35 @@ export const UploadZone: React.FC = () => {
           </p>
         )}
       </div>
+
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#F5F3EA] rounded-3xl shadow-2xl overflow-hidden p-6 text-center animate-in zoom-in-95 duration-300">
+            <div className="w-14 h-14 bg-[#164A3A]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-7 h-7 text-[#164A3A]" strokeWidth={2} />
+            </div>
+            <h3 className="text-xl font-bold text-[#171A3A] mb-2">Sign in to continue</h3>
+            <p className="text-sm text-[#171A3A]/70 font-medium mb-6 leading-relaxed">
+              You need an account to upload, verify, and track your receipts.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => navigate("/login")}
+                className="w-full bg-[#164A3A] hover:bg-[#164A3A]/90 text-white font-bold py-2.5 rounded-xl shadow-md transition-all text-sm"
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="w-full bg-white border border-[#171A3A]/10 hover:bg-slate-50 text-[#171A3A] font-semibold py-2.5 rounded-xl shadow-sm transition-all text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
