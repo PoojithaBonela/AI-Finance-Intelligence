@@ -43,7 +43,10 @@ export const Login: React.FC = () => {
     setError(null);
     try {
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google'
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
       });
       if (oauthError) throw oauthError;
     } catch (err: any) {

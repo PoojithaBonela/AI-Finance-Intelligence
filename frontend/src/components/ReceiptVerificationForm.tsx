@@ -210,7 +210,7 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
 
-      const res = await fetch("http://localhost:8000/api/receipts/check-duplicate", {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/receipts/check-duplicate`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -270,7 +270,7 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
 
-      const response = await fetch("http://localhost:8000/api/receipts", {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/receipts`, {
         method: "POST",
         headers,
         body: JSON.stringify(verified),
@@ -354,7 +354,7 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
 
-      const res = await fetch("http://localhost:8000/api/documents/upload", {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/documents/upload`, {
         method: "POST",
         body: formData,
         headers,

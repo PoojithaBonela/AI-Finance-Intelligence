@@ -86,7 +86,7 @@ export const PurchasesList: React.FC = () => {
         if (session?.access_token) {
           headers["Authorization"] = `Bearer ${session.access_token}`;
         }
-        const res = await fetch("http://localhost:8000/api/receipts", { headers });
+        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/receipts`, { headers });
         if (!res.ok) throw new Error("Failed to fetch purchases data.");
       const data: Receipt[] = await res.json();
       setReceipts(data);
@@ -171,7 +171,7 @@ export const PurchasesList: React.FC = () => {
           headers["Authorization"] = `Bearer ${session.access_token}`;
         }
 
-        const res = await fetch("http://localhost:8000/api/convert-receipts", {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/convert-receipts`, {
           method: "POST",
           headers,
           body: JSON.stringify(payload),
