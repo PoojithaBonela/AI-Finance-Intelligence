@@ -1,10 +1,11 @@
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, BackgroundTasks
 from ..schemas.receipts import ReceiptCreate, ReceiptResponse
 from ..database import supabase_client
 from ..dependencies import get_current_user
 from pydantic import BaseModel
 import logging
+from app.agents.categorization_agent.categorizer import categorize_receipt_background
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 logger = logging.getLogger(__name__)
@@ -168,7 +169,7 @@ async def check_duplicate(body: DupCheckRequest, user_id: str = Depends(get_curr
 
 
 @router.post("", response_model=ReceiptResponse, status_code=status.HTTP_201_CREATED)
-async def create_receipt(receipt_in: ReceiptCreate, user_id: str = Depends(get_current_user)):
+async def create_receipt(receipt_in: ReceiptCreate, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     if not supabase_client:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -211,6 +212,10 @@ async def create_receipt(receipt_in: ReceiptCreate, user_id: str = Depends(get_c
 
         # 3. Assemble response
         created_receipt["items"] = created_items
+
+        # 4. Trigger background categorization
+        background_tasks.add_task(categorize_receipt_background, receipt_id, created_receipt)
+
         return created_receipt
 
     except Exception as e:

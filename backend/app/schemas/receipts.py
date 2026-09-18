@@ -23,6 +23,7 @@ class ReceiptCreate(BaseModel):
     payment_method: Optional[str] = None
     warranty_period_days: Optional[int] = None
     document_type: Optional[str] = None
+    category: Optional[str] = None
     
     # Cloudinary fields
     cloudinary_public_id: Optional[str] = None
@@ -45,6 +46,7 @@ class ReceiptResponse(BaseModel):
     payment_method: Optional[str] = None
     warranty_period_days: Optional[int] = None
     document_type: Optional[str] = None
+    category: Optional[str] = None
     cloudinary_public_id: Optional[str] = None
     cloudinary_resource_type: Optional[str] = None
     original_filename: Optional[str] = None
