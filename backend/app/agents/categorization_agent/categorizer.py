@@ -5,7 +5,7 @@ from typing import Optional
 from .categories import ALLOWED_CATEGORIES, FALLBACK_CATEGORY
 from .prompts import CATEGORIZATION_PROMPT
 from app.services.ocr import get_gemini_client
-from app.database import supabase_client
+import app.database
 
 logger = logging.getLogger(__name__)
 
@@ -15,25 +15,28 @@ class CategorizationResult(BaseModel):
 
 def run_categorization(receipt_data: dict) -> str:
     """
-    Runs the Gemini model to categorize the receipt data.
-    Returns the chosen category.
+    Synchronous helper to run the Gemini prompt and parse the result.
     """
     try:
-        client = get_gemini_client()
-        
-        # Prepare the data summary to send to Gemini
+        # Extract meaningful data to send to Gemini
         data_summary = {
             "merchant_name": receipt_data.get("merchant_name"),
-            "purchase_date": receipt_data.get("purchase_date"),
-            "total_amount": receipt_data.get("total_amount"),
-            "payment_method": receipt_data.get("payment_method"),
-            "items": receipt_data.get("items", [])
+            "items": [
+                {"name": item.get("item_name"), "price": item.get("total_price")}
+                for item in receipt_data.get("items", [])
+            ]
         }
         
         content = json.dumps(data_summary, indent=2)
+        logger.info(f"DEBUG_AGENT2: Final verified receipt data sent to Agent 2: {content}")
         
+        model_name = "gemini-3.5-flash-lite"
+        logger.info(f"DEBUG_AGENT2: Gemini model being used: {model_name}")
+        logger.info("DEBUG_AGENT2: Gemini request started")
+        
+        client = get_gemini_client()
         response = client.models.generate_content(
-            model='gemini-2.5-pro',
+            model=model_name,
             contents=[
                 CATEGORIZATION_PROMPT,
                 f"Receipt Data:\n{content}"
@@ -46,44 +49,50 @@ def run_categorization(receipt_data: dict) -> str:
         )
         
         if not response.text:
-            logger.warning("Empty response from Gemini categorization.")
+            logger.error("DEBUG_AGENT2: Empty response from Gemini categorization.")
             return FALLBACK_CATEGORY
             
+        logger.info(f"DEBUG_AGENT2: Raw Gemini categorization result: {response.text}")
         result = CategorizationResult.model_validate_json(response.text)
+        logger.info(f"DEBUG_AGENT2: Parsed Gemini categorization result: category={result.category}, confidence={result.confidence}")
         
         # Validate category and confidence
         if result.confidence < 0.6:
-            logger.info(f"Categorization confidence too low ({result.confidence}). Using fallback.")
+            logger.warning(f"DEBUG_AGENT2: Confidence threshold caused fallback. Categorization confidence too low ({result.confidence} < 0.6). Using fallback 'Other'.")
             return FALLBACK_CATEGORY
             
         if result.category not in ALLOWED_CATEGORIES:
-            logger.warning(f"Gemini returned invalid category: '{result.category}'. Using fallback.")
+            logger.warning(f"DEBUG_AGENT2: Category failed validation. Gemini returned invalid category: '{result.category}'. Using fallback 'Other'.")
             return FALLBACK_CATEGORY
             
+        logger.info(f"DEBUG_AGENT2: run_categorization SUCCESS! Category passed validation. Returned category: {result.category}")
         return result.category
         
     except Exception as e:
-        logger.error(f"Error during categorization: {e}")
+        logger.error(f"DEBUG_AGENT2: Error during categorization: {e}", exc_info=True)
         return FALLBACK_CATEGORY
 
 async def categorize_receipt_background(receipt_id: str, receipt_data: dict):
     """
-    Background task to run categorization and update the receipt in the database.
+    Background task that calls Gemini and updates the Supabase record.
     Catches all exceptions to ensure it doesn't break the main thread.
     """
     try:
-        logger.info(f"Starting background categorization for receipt {receipt_id}...")
+        logger.info(f"DEBUG_AGENT2: Agent 2 started for receipt ID: {receipt_id}")
         category = run_categorization(receipt_data)
         
-        if not supabase_client:
-            logger.error("Database connection not initialized. Cannot save category.")
+        if not app.database.supabase_client:
+            logger.error("DEBUG_AGENT2: Database connection not initialized. Cannot save category.")
             return
             
-        res = supabase_client.table("receipts").update({"category": category}).eq("id", receipt_id).execute()
+        logger.info(f"DEBUG_AGENT2: Supabase UPDATE attempted. Updating category={category} for receipt_id={receipt_id}")
+        res = app.database.supabase_client.table("receipts").update({"category": category}).eq("id", receipt_id).execute()
+        
+        logger.info(f"DEBUG_AGENT2: Supabase UPDATE result/error: {res.data}")
         if not res.data:
-            logger.warning(f"Failed to update category for receipt {receipt_id}. Row might not exist.")
+            logger.error(f"DEBUG_AGENT2: Failed to update category for receipt {receipt_id}. Row might not exist or RLS blocked it.")
         else:
-            logger.info(f"Successfully categorized receipt {receipt_id} as '{category}'.")
+            logger.info(f"DEBUG_AGENT2: Final category saved successfully. Categorized receipt {receipt_id} as '{category}'.")
             
     except Exception as e:
-        logger.error(f"Failed background categorization for {receipt_id}: {e}", exc_info=True)
+        logger.error(f"DEBUG_AGENT2: Failed background categorization for {receipt_id}: {e}", exc_info=True)

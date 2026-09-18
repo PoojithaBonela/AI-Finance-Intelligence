@@ -6,6 +6,9 @@ from ..dependencies import get_current_user
 from pydantic import BaseModel
 import logging
 from app.agents.categorization_agent.categorizer import categorize_receipt_background
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])
 logger = logging.getLogger(__name__)
@@ -170,6 +173,7 @@ async def check_duplicate(body: DupCheckRequest, user_id: str = Depends(get_curr
 
 @router.post("", response_model=ReceiptResponse, status_code=status.HTTP_201_CREATED)
 async def create_receipt(receipt_in: ReceiptCreate, background_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
+    logger.info("DEBUG_UPLOAD: Received upload request")
     if not supabase_client:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

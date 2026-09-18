@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, FileText, ExternalLink, RefreshCw, X, ChevronDown, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { CATEGORY_COLORS } from "../utils/categories";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ReceiptItem {
@@ -27,6 +28,7 @@ interface Receipt {
   original_filename: string | null;
   cloudinary_assets?: any[];
   items: ReceiptItem[];
+  category: string | null;
 }
 
 interface ItemConverted {
@@ -342,12 +344,23 @@ export const PurchasesList: React.FC = () => {
                 <div className="px-4 py-3 flex items-center justify-between border-b border-slate-300">
                   <div>
                     <h2 className="text-sm font-bold text-slate-800">{r.merchant_name}</h2>
-                    <p className="text-xs text-slate-500 mt-0.5 font-support">
-                      {r.purchase_date || "Date unknown"} • {r.document_type || "Receipt"}
+                    <p className="text-xs text-slate-500 mt-0.5 font-support flex items-center gap-2">
+                      <span>{r.purchase_date || "Date unknown"}</span>
+                      <span className="text-slate-300">•</span>
+                      <span>{r.document_type || "Receipt"}</span>
+                      {r.category && (
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span className={`font-semibold ${CATEGORY_COLORS[r.category] || "text-gray-500/80"}`}>{r.category}</span>
+                        </>
+                      )}
                       {origCurr && (
-                        <span className="ml-2 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
-                          orig. {origCurr}
-                        </span>
+                        <>
+                          <span className="text-slate-300">•</span>
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+                            orig. {origCurr}
+                          </span>
+                        </>
                       )}
                     </p>
                   </div>

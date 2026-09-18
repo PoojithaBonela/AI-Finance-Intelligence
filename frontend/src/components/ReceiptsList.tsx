@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Search, UploadCloud, ReceiptText, Loader2, X, ChevronDown, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { CATEGORY_COLORS, CATEGORIES } from "../utils/categories";
 
 // Types
 interface Receipt {
@@ -13,6 +14,7 @@ interface Receipt {
   currency: string | null;
   cloudinary_public_id: string | null;
   cloudinary_assets?: any[];
+  category: string | null;
 }
 
 function FilterDropdown({ 
@@ -90,6 +92,7 @@ export const ReceiptsList: React.FC = () => {
   const [activeMonth, setActiveMonth] = useState<string | null>(null);
   const [activeYear, setActiveYear] = useState<string | null>(null);
   const [priceSort, setPriceSort] = useState<"high" | "low" | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   // Currency conversion map for price sorting
   const [convertedSortMap, setConvertedSortMap] = useState<Record<string, number>>({});
@@ -193,6 +196,8 @@ export const ReceiptsList: React.FC = () => {
   let filteredReceipts = receipts.filter((r) => {
     if (searchQuery && !(r.merchant_name || "Unknown Merchant").toLowerCase().includes(searchQuery.toLowerCase())) return false;
     
+    if (activeCategory && r.category !== activeCategory) return false;
+    
     if (activeMonth !== null || activeYear !== null) {
       if (!r.purchase_date) return false;
       const d = new Date(r.purchase_date);
@@ -219,6 +224,7 @@ export const ReceiptsList: React.FC = () => {
     setActiveMonth(null);
     setActiveYear(null);
     setPriceSort(null);
+    setActiveCategory(null);
   };
 
   const formatAmount = (amt: number, curr: string | null) => {
@@ -284,12 +290,12 @@ export const ReceiptsList: React.FC = () => {
           <button
             onClick={clearAllFilters}
             className={`shrink-0 px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 border ${
-              dateSort === null && activeMonth === null && activeYear === null && priceSort === null
+              dateSort === null && activeMonth === null && activeYear === null && priceSort === null && activeCategory === null
                 ? "bg-[#164A3A] text-white border-[#164A3A] shadow-sm"
                 : "bg-[#F5F3EA] text-[#171A3A] border-[#171A3A]/10 hover:bg-white"
             }`}
           >
-            All {(dateSort !== null || activeMonth !== null || activeYear !== null || priceSort !== null) && <X className="w-3.5 h-3.5 opacity-70 -mr-1" />}
+            All {(dateSort !== null || activeMonth !== null || activeYear !== null || priceSort !== null || activeCategory !== null) && <X className="w-3.5 h-3.5 opacity-70 -mr-1" />}
           </button>
 
           <FilterDropdown 
@@ -328,6 +334,14 @@ export const ReceiptsList: React.FC = () => {
             value={priceSort}
             onChange={(v) => setPriceSort(v as "high" | "low")}
             onClear={() => setPriceSort(null)}
+          />
+
+          <FilterDropdown 
+            label="Category"
+            options={CATEGORIES.map(c => ({ label: c, value: c }))}
+            value={activeCategory}
+            onChange={setActiveCategory}
+            onClear={() => setActiveCategory(null)}
           />
 
         </div>
@@ -373,7 +387,11 @@ export const ReceiptsList: React.FC = () => {
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-xs text-[#171A3A]/60 font-support">
                     <span>{formatDate(receipt.purchase_date)}</span>
                     <span className="hidden sm:inline text-[#171A3A]/30">•</span>
-                    <span className="font-semibold text-[#171A3A]/50">{receipt.document_type || "Receipt"}</span>
+                    {receipt.category ? (
+                      <span className={`font-semibold ${CATEGORY_COLORS[receipt.category] || "text-gray-500/80"}`}>{receipt.category}</span>
+                    ) : (
+                      <span className="font-semibold text-[#171A3A]/50">{receipt.document_type || "Receipt"}</span>
+                    )}
                   </div>
                 </div>
               </div>
