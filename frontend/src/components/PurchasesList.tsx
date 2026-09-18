@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, FileText, ExternalLink, RefreshCw, X, ChevronDown, Trash2 } from "lucide-react";
+import { Loader2, FileText, ExternalLink, RefreshCw, X, ChevronDown, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -25,6 +25,7 @@ interface Receipt {
   cloudinary_public_id: string | null;
   cloudinary_resource_type: string | null;
   original_filename: string | null;
+  cloudinary_assets?: any[];
   items: ReceiptItem[];
 }
 
@@ -71,6 +72,7 @@ export const PurchasesList: React.FC = () => {
   const [deletingReceiptId, setDeletingReceiptId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting]               = useState(false);
   const [deleteError, setDeleteError]             = useState<string | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const location                              = useLocation();
 
   // Conversion state
@@ -360,9 +362,9 @@ export const PurchasesList: React.FC = () => {
                         Rate: {conv.rate_date}
                       </span>
                     )}
-                    {r.cloudinary_public_id && (
+                    {(r.cloudinary_public_id || (r.cloudinary_assets && r.cloudinary_assets.length > 0)) && (
                       <button
-                        onClick={() => setSelectedReceipt(r)}
+                        onClick={() => { setSelectedReceipt(r); setCurrentImageIndex(0); }}
                         className="flex items-center gap-1.5 text-xs font-bold text-[#0D7C66] hover:text-[#0a5c4c] transition-colors shrink-0 bg-white/50 px-3 py-1.5 rounded border border-[#B8C5A3]"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -508,32 +510,77 @@ export const PurchasesList: React.FC = () => {
       )}
 
       {/* ── View Receipt Modal ── */}
-      {selectedReceipt && selectedReceipt.cloudinary_public_id && (
+      {selectedReceipt && (selectedReceipt.cloudinary_public_id || (selectedReceipt.cloudinary_assets && selectedReceipt.cloudinary_assets.length > 0)) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-4xl bg-black rounded-lg shadow-2xl overflow-hidden flex flex-col">
+          <div className="relative w-full max-w-4xl bg-black rounded-lg shadow-2xl overflow-hidden flex flex-col group">
             <div className="absolute top-4 right-4 z-10">
               <button
-                onClick={() => setSelectedReceipt(null)}
+                onClick={() => { setSelectedReceipt(null); setCurrentImageIndex(0); }}
                 className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors backdrop-blur-md"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="w-full h-auto max-h-[85vh] overflow-auto flex items-center justify-center">
-              {selectedReceipt.original_filename?.toLowerCase().endsWith(".pdf") ? (
-                <iframe
-                  src={`https://res.cloudinary.com/iplgysjg/${selectedReceipt.cloudinary_resource_type || "image"}/upload/${selectedReceipt.cloudinary_public_id}.pdf`}
-                  title="Receipt PDF"
-                  className="w-full h-[85vh] border-0"
-                />
-              ) : (
-                <img
-                  src={`https://res.cloudinary.com/iplgysjg/${selectedReceipt.cloudinary_resource_type || "image"}/upload/${selectedReceipt.cloudinary_public_id}`}
-                  alt="Receipt Document"
-                  className="max-w-full h-auto object-contain"
-                />
-              )}
-            </div>
+            
+            {(() => {
+              const hasAssets = selectedReceipt.cloudinary_assets && selectedReceipt.cloudinary_assets.length > 0;
+              const currentAsset = hasAssets ? selectedReceipt.cloudinary_assets![currentImageIndex] : null;
+              
+              const displayPublicId = currentAsset ? currentAsset.public_id : selectedReceipt.cloudinary_public_id;
+              const displayResourceType = currentAsset ? currentAsset.resource_type : selectedReceipt.cloudinary_resource_type || "image";
+              const displayFilename = currentAsset ? currentAsset.filename || currentAsset.original_filename : selectedReceipt.original_filename;
+              const isPdf = displayFilename?.toLowerCase().endsWith(".pdf") || displayResourceType === "raw";
+              const totalImages = hasAssets ? selectedReceipt.cloudinary_assets!.length : 1;
+
+              return (
+                <>
+                  {totalImages > 1 && (
+                    <div className="absolute top-4 left-4 z-10 bg-black/50 text-white px-3 py-1.5 rounded-full text-sm font-bold backdrop-blur-md">
+                      {currentImageIndex + 1} of {totalImages}
+                    </div>
+                  )}
+
+                  <div className="w-full h-auto max-h-[85vh] overflow-auto flex items-center justify-center">
+                    {isPdf ? (
+                      <iframe
+                        src={`https://res.cloudinary.com/iplgysjg/image/upload/${displayPublicId}.pdf`}
+                        title="Receipt PDF"
+                        className="w-full h-[85vh] border-0 bg-white"
+                      />
+                    ) : (
+                      <img
+                        src={`https://res.cloudinary.com/iplgysjg/${displayResourceType || "image"}/upload/${displayPublicId}`}
+                        alt="Receipt Document"
+                        className="max-w-full h-auto object-contain max-h-[85vh]"
+                      />
+                    )}
+                  </div>
+
+                  {totalImages > 1 && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex((prev) => (prev > 0 ? prev - 1 : totalImages - 1));
+                        }}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 hover:bg-black/80 rounded-full text-white transition-all backdrop-blur-md opacity-0 group-hover:opacity-100"
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex((prev) => (prev < totalImages - 1 ? prev + 1 : 0));
+                        }}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 hover:bg-black/80 rounded-full text-white transition-all backdrop-blur-md opacity-0 group-hover:opacity-100"
+                      >
+                        <ChevronRight className="w-6 h-6" />
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

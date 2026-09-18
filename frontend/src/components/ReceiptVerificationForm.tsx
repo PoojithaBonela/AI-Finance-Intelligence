@@ -40,6 +40,7 @@ export interface ExtractedReceiptData {
 interface Props {
   data: ExtractedReceiptData;
   cloudinaryPublicId?: string;
+  cloudinaryAssets?: any[];
   filename: string;
   initialFiles: File[];
   onClose: () => void;
@@ -87,6 +88,7 @@ function ConfBadge({ score }: { score: number | undefined }) {
 export const ReceiptVerificationForm: React.FC<Props> = ({
   data,
   cloudinaryPublicId,
+  cloudinaryAssets,
   filename,
   initialFiles,
   onClose,
@@ -260,6 +262,7 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
       payment_method: paymentMethod.trim() || null,
       warranty_period_days: warrantyDays ? parseInt(warrantyDays) : null,
       cloudinary_public_id: cloudinaryPublicId || null,
+      cloudinary_assets: cloudinaryAssets || null,
       cloudinary_resource_type: "image",
       original_filename: filename,
     };

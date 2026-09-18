@@ -12,6 +12,7 @@ interface UploadedDoc {
   image_count: number;
   cloudinary_url: string;
   cloudinary_public_id: string;
+  cloudinary_assets?: any[];
   extracted_data: ExtractedReceiptData;
   files: File[];
 }
@@ -144,6 +145,7 @@ export const UploadZone: React.FC = () => {
         image_count: data.document.image_count,
         cloudinary_url: data.cloudinary_url,
         cloudinary_public_id: data.cloudinary_public_id,
+        cloudinary_assets: data.cloudinary_assets,
         extracted_data: {
           ...data.document.extracted_data,
           field_confidences: data.document.extracted_data.field_confidences ?? {},
@@ -172,6 +174,7 @@ export const UploadZone: React.FC = () => {
       <ReceiptVerificationForm
         data={successDoc.extracted_data}
         cloudinaryPublicId={successDoc.cloudinary_public_id}
+        cloudinaryAssets={successDoc.cloudinary_assets}
         filename={successDoc.original_filename}
         initialFiles={successDoc.files}
         onClose={() => {

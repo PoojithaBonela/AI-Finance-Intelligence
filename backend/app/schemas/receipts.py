@@ -28,6 +28,7 @@ class ReceiptCreate(BaseModel):
     cloudinary_public_id: Optional[str] = None
     cloudinary_resource_type: Optional[str] = None
     original_filename: Optional[str] = None
+    cloudinary_assets: Optional[list] = None
     
     # Items
     items: List[ReceiptItemCreate] = []
@@ -47,5 +48,6 @@ class ReceiptResponse(BaseModel):
     cloudinary_public_id: Optional[str] = None
     cloudinary_resource_type: Optional[str] = None
     original_filename: Optional[str] = None
+    cloudinary_assets: Optional[list] = None
     created_at: str
     items: List[ReceiptItemResponse] = []

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Search, UploadCloud, ReceiptText, Loader2, X, ChevronDown, Trash2 } from "lucide-react";
+import { Search, UploadCloud, ReceiptText, Loader2, X, ChevronDown, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -12,6 +12,7 @@ interface Receipt {
   total_amount: number;
   currency: string | null;
   cloudinary_public_id: string | null;
+  cloudinary_assets?: any[];
 }
 
 function FilterDropdown({ 
@@ -94,7 +95,8 @@ export const ReceiptsList: React.FC = () => {
   const [convertedSortMap, setConvertedSortMap] = useState<Record<string, number>>({});
 
   // Lightbox modal state
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewReceipt, setPreviewReceipt] = useState<Receipt | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // Delete modal state
   const [deletingReceiptId, setDeletingReceiptId] = useState<string | null>(null);
@@ -345,15 +347,16 @@ export const ReceiptsList: React.FC = () => {
                   className="w-12 h-12 rounded-xl bg-[#0D7C66]/10 text-[#0D7C66] flex items-center justify-center shrink-0 border border-[#0D7C66]/20 overflow-hidden cursor-zoom-in group/thumb relative"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (receipt.cloudinary_public_id) {
-                      setPreviewImage(`https://res.cloudinary.com/iplgysjg/image/upload/${receipt.cloudinary_public_id}`);
+                    if (receipt.cloudinary_public_id || (receipt.cloudinary_assets && receipt.cloudinary_assets.length > 0)) {
+                      setPreviewReceipt(receipt);
+                      setCurrentImageIndex(0);
                     }
                   }}
                 >
-                  {receipt.cloudinary_public_id ? (
+                  {receipt.cloudinary_public_id || (receipt.cloudinary_assets && receipt.cloudinary_assets.length > 0) ? (
                     <>
                       <img 
-                        src={`https://res.cloudinary.com/iplgysjg/image/upload/w_100,c_fill/${receipt.cloudinary_public_id}`} 
+                        src={`https://res.cloudinary.com/iplgysjg/image/upload/w_100,c_fill/${receipt.cloudinary_assets && receipt.cloudinary_assets.length > 0 ? receipt.cloudinary_assets[0].public_id : receipt.cloudinary_public_id}`} 
                         alt="Thumbnail" 
                         className="w-full h-full object-cover transition-transform group-hover/thumb:scale-110" 
                       />
@@ -459,33 +462,74 @@ export const ReceiptsList: React.FC = () => {
       )}
 
       {/* Lightbox Modal */}
-      {previewImage && (
+      {previewReceipt && (previewReceipt.cloudinary_public_id || (previewReceipt.cloudinary_assets && previewReceipt.cloudinary_assets.length > 0)) && (
         <div 
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-          onClick={() => setPreviewImage(null)}
+          onClick={() => { setPreviewReceipt(null); setCurrentImageIndex(0); }}
         >
           <div 
-            className="relative max-w-4xl max-h-[90vh] w-full h-full flex flex-col"
+            className="relative max-w-4xl max-h-[90vh] w-full h-full flex flex-col group"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close Button */}
             <div className="flex justify-end mb-4">
               <button 
-                onClick={() => setPreviewImage(null)}
+                onClick={() => { setPreviewReceipt(null); setCurrentImageIndex(0); }}
                 className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors backdrop-blur-md"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             
-            {/* Image Container */}
-            <div className="flex-1 w-full bg-black/50 rounded-2xl overflow-hidden border border-white/10 flex items-center justify-center">
-              <img 
-                src={previewImage} 
-                alt="Receipt Preview" 
-                className="max-w-full max-h-full object-contain"
-              />
-            </div>
+            {(() => {
+              const hasAssets = previewReceipt.cloudinary_assets && previewReceipt.cloudinary_assets.length > 0;
+              const currentAsset = hasAssets ? previewReceipt.cloudinary_assets![currentImageIndex] : null;
+              
+              const displayPublicId = currentAsset ? currentAsset.public_id : previewReceipt.cloudinary_public_id;
+              const displayResourceType = currentAsset ? currentAsset.resource_type : "image";
+              const totalImages = hasAssets ? previewReceipt.cloudinary_assets!.length : 1;
+
+              return (
+                <>
+                  {totalImages > 1 && (
+                    <div className="absolute top-4 left-4 z-10 bg-black/50 text-white px-3 py-1.5 rounded-full text-sm font-bold backdrop-blur-md">
+                      {currentImageIndex + 1} of {totalImages}
+                    </div>
+                  )}
+
+                  <div className="flex-1 w-full bg-black/50 rounded-2xl overflow-hidden border border-white/10 flex items-center justify-center">
+                    <img 
+                      src={`https://res.cloudinary.com/iplgysjg/${displayResourceType}/upload/${displayPublicId}`} 
+                      alt="Receipt Preview" 
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  </div>
+
+                  {totalImages > 1 && (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex((prev) => (prev > 0 ? prev - 1 : totalImages - 1));
+                        }}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 hover:bg-black/80 rounded-full text-white transition-all backdrop-blur-md opacity-0 group-hover:opacity-100"
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex((prev) => (prev < totalImages - 1 ? prev + 1 : 0));
+                        }}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 hover:bg-black/80 rounded-full text-white transition-all backdrop-blur-md opacity-0 group-hover:opacity-100"
+                      >
+                        <ChevronRight className="w-6 h-6" />
+                      </button>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
