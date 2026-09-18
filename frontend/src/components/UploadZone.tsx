@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Upload, FileImage, FileText, AlertCircle, Loader2, Images } from "lucide-react";
+import { Upload, FileImage, FileText, AlertCircle, Loader2, Images, Camera } from "lucide-react";
 import { ReceiptVerificationForm, type ExtractedReceiptData } from "./ReceiptVerificationForm";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +33,7 @@ export const UploadZone: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
 
   const fileInputRefPhysical = useRef<HTMLInputElement>(null);
+  const fileInputRefCamera = useRef<HTMLInputElement>(null);
   const fileInputRefDigital = useRef<HTMLInputElement>(null);
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
@@ -95,13 +96,14 @@ export const UploadZone: React.FC = () => {
     });
   };
 
-  const triggerFileInput = (type: "physical" | "digital") => {
+  const triggerFileInput = (type: "physical" | "digital" | "camera") => {
     if (!session) {
       setShowAuthModal(true);
       return;
     }
     if (isUploading) return;
     if (type === "physical") fileInputRefPhysical.current?.click();
+    else if (type === "camera") fileInputRefCamera.current?.click();
     else fileInputRefDigital.current?.click();
   };
 
@@ -209,6 +211,7 @@ export const UploadZone: React.FC = () => {
           style={{ backgroundColor: "#F5F3EA" }}
         >
           <input ref={fileInputRefPhysical} type="file" className="hidden" accept=".jpg,.jpeg,.png" multiple disabled={isUploading} onChange={(e) => handleFileChange(e, "physical")} />
+          <input ref={fileInputRefCamera} type="file" className="hidden" accept="image/*" capture="environment" multiple disabled={isUploading} onChange={(e) => handleFileChange(e, "physical")} />
           <div className="w-14 h-14 rounded-2xl bg-[#0D7C66]/10 flex items-center justify-center mb-5">
             <FileImage className="w-7 h-7 text-[#0D7C66]" strokeWidth={1.5} />
           </div>
@@ -216,7 +219,22 @@ export const UploadZone: React.FC = () => {
           <p className="text-sm text-[#164A3A] mt-2 text-center max-w-[240px]">
             Upload 1–{MAX_IMAGES} photos of the same receipt (JPG/JPEG/PNG).
           </p>
-          <div className="mt-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0D7C66]/8 text-xs text-[#164A3A] font-medium border border-[#0D7C66]/15">
+          
+          {/* Mobile specific camera button */}
+          <div className="md:hidden mt-4 w-full">
+            <button
+              onClick={(e) => { e.stopPropagation(); triggerFileInput("camera"); }}
+              className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#0D7C66] text-white rounded-xl font-semibold shadow-sm active:scale-[0.98] transition-transform"
+            >
+              <Camera className="w-5 h-5" />
+              Take Photo
+            </button>
+            <div className="text-center mt-2 text-xs font-medium text-[#164A3A]/70 uppercase tracking-wider">
+              Or tap to choose from gallery
+            </div>
+          </div>
+
+          <div className="hidden md:flex mt-4 items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#0D7C66]/8 text-xs text-[#164A3A] font-medium border border-[#0D7C66]/15">
             <Images className="w-3.5 h-3.5 text-[#0D7C66]" /><span>Multi-photo long receipts supported</span>
           </div>
         </div>
