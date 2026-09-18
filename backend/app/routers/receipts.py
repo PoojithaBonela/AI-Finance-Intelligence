@@ -232,11 +232,39 @@ async def get_receipts(user_id: str = Depends(get_current_user)):
         # Fetch receipts and their nested receipt_items
         # Since we just created the table via raw SQL, the foreign key relation is named 'receipt_items_receipt_id_fkey'.
         # In PostgREST, we can just do 'receipt_items(*)' to join it.
-        res = supabase_client.table("receipts").select("*, items:receipt_items(*)").eq("user_id", user_id).order("created_at", desc=True).execute()
+        res = supabase_client.table("receipts").select("*, items:receipt_items(*)").eq("user_id", user_id).is_("deleted_at", "null").order("created_at", desc=True).execute()
         return res.data
     except Exception as e:
         logger.error(f"Error fetching receipts: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred while fetching receipts: {str(e)}"
+        )
+
+@router.delete("/{receipt_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_receipt(receipt_id: str, user_id: str = Depends(get_current_user)):
+    if not supabase_client:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection is not initialized."
+        )
+
+    try:
+        # Verify ownership
+        check_res = supabase_client.table("receipts").select("user_id").eq("id", receipt_id).execute()
+        if not check_res.data or check_res.data[0].get("user_id") != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Receipt not found")
+
+        # Soft delete by setting deleted_at
+        update_res = supabase_client.table("receipts").update({"deleted_at": "now()"}).eq("id", receipt_id).execute()
+        if not update_res.data:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete receipt")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error soft deleting receipt {receipt_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while deleting the receipt: {str(e)}"
         )

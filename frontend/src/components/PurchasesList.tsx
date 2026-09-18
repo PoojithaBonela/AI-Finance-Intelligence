@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, FileText, ExternalLink, RefreshCw, X, ChevronDown } from "lucide-react";
+import { Loader2, FileText, ExternalLink, RefreshCw, X, ChevronDown, Trash2 } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -68,6 +68,9 @@ export const PurchasesList: React.FC = () => {
   const [error, setError]                     = useState<string | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [highlightedReceiptId, setHighlightedReceiptId] = useState<string | null>(null);
+  const [deletingReceiptId, setDeletingReceiptId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting]               = useState(false);
+  const [deleteError, setDeleteError]             = useState<string | null>(null);
   const location                              = useLocation();
 
   // Conversion state
@@ -98,6 +101,29 @@ export const PurchasesList: React.FC = () => {
   };
 
   useEffect(() => { fetchReceipts(); }, []);
+
+  const handleDelete = async () => {
+    if (!deletingReceiptId) return;
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/receipts/${deletingReceiptId}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) throw new Error("Failed to delete receipt.");
+      setReceipts(prev => prev.filter(r => r.id !== deletingReceiptId));
+      setDeletingReceiptId(null);
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Auto-scroll to receipt from location state
   useEffect(() => {
@@ -343,6 +369,13 @@ export const PurchasesList: React.FC = () => {
                         <span>View Receipt</span>
                       </button>
                     )}
+                    <button
+                      onClick={() => setDeletingReceiptId(r.id)}
+                      title="Delete"
+                      className="flex items-center justify-center w-8 h-8 rounded border border-slate-300 bg-slate-100 hover:bg-slate-200 transition-colors text-slate-600 hover:text-slate-800 shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
@@ -436,6 +469,41 @@ export const PurchasesList: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deletingReceiptId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#171A3A]/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl flex flex-col items-center text-center">
+            <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-4 border border-slate-200">
+              <Trash2 className="w-6 h-6 text-slate-500" />
+            </div>
+            <h3 className="text-xl font-bold text-[#171A3A] mb-2">Delete this purchase?</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              This item will be removed from your lists and kept in Trash for 30 days before permanent deletion.
+            </p>
+            {deleteError && (
+              <p className="text-sm text-rose-500 mb-4 bg-rose-50 px-3 py-2 rounded-lg border border-rose-100">{deleteError}</p>
+            )}
+            <div className="flex w-full gap-3">
+              <button
+                onClick={() => { setDeletingReceiptId(null); setDeleteError(null); }}
+                disabled={isDeleting}
+                className="flex-1 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="flex-1 py-2.5 rounded-xl font-bold text-white bg-slate-600 hover:bg-slate-700 transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
+              >
+                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

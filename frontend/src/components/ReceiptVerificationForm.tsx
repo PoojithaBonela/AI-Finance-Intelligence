@@ -420,20 +420,39 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
 
   if (saved) {
     return (
-      <div className="w-full max-w-2xl mx-auto mt-12 bg-brand-cream rounded-3xl p-10 flex flex-col items-center gap-4 text-center shadow-2xl">
-        <div className="p-5 bg-emerald-100 rounded-full">
-          <CheckCircle className="w-12 h-12 text-emerald-600" />
+      <div className="w-full max-w-lg mx-auto mt-16 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="relative bg-white rounded-3xl p-10 flex flex-col items-center gap-5 text-center shadow-[0_8px_40px_rgba(23,26,58,0.10)] border border-[#171A3A]/5 overflow-hidden">
+          {/* Decorative top accent */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#164A3A] via-[#7A9B6D] to-[#164A3A]" />
+
+          {/* Success icon */}
+          <div className="mt-2 p-4 bg-[#7A9B6D]/10 rounded-2xl border border-[#7A9B6D]/20">
+            <CheckCircle className="w-10 h-10 text-[#7A9B6D]" />
+          </div>
+
+          {/* Heading */}
+          <h3 className="text-2xl font-bold text-[#171A3A] tracking-tight">
+            Receipt Saved Successfully
+          </h3>
+
+          {/* Description */}
+          <p className="text-sm text-[#171A3A]/50 leading-relaxed max-w-sm">
+            Verified data for{" "}
+            <span className="font-bold text-[#164A3A]">{merchantName}</span>{" "}
+            has been confirmed and stored.
+          </p>
+
+          {/* Divider */}
+          <div className="w-16 h-px bg-[#171A3A]/10 my-1" />
+
+          {/* Action button */}
+          <button
+            onClick={onClose}
+            className="px-8 py-3 bg-[#7A9B6D] hover:bg-[#6B8C5E] text-white font-bold text-sm rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+          >
+            Upload Another Receipt
+          </button>
         </div>
-        <h3 className="text-3xl font-bold text-brand-navy">Receipt Saved!</h3>
-        <p className="text-slate-500 font-support">
-          Verified data for <strong>{merchantName}</strong> has been confirmed and is ready for database storage.
-        </p>
-        <button
-          onClick={onClose}
-          className="mt-6 px-8 py-3 bg-gradient-to-r from-brand-violet to-brand-teal text-white font-bold rounded-xl hover:opacity-90 transition-opacity"
-        >
-          Upload Another
-        </button>
       </div>
     );
   }
