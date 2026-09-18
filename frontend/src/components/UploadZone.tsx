@@ -124,7 +124,7 @@ export const UploadZone: React.FC = () => {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
 
-      const response = await fetch("/api/documents/upload", { 
+      const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/documents/upload`, { 
         method: "POST", 
         body: formData,
         headers
