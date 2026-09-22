@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import supabase_client
-from .routers import upload, receipts, exchange
+from .routers import upload, receipts, exchange, analytics
 from .services.cloudinary_service import delete_from_cloudinary
 
 # Configure logging
@@ -88,6 +88,7 @@ app.add_middleware(
 app.include_router(upload.router)
 app.include_router(receipts.router)
 app.include_router(exchange.router)
+app.include_router(analytics.router)
 
 @app.get("/")
 async def root():

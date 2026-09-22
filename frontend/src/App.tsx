@@ -9,6 +9,7 @@ import { PurchasesList } from "./components/PurchasesList";
 import { Login } from "./components/Login";
 import { Signup } from "./components/Signup";
 import { ResetPassword } from "./components/ResetPassword";
+import { Analytics } from "./components/Analytics";
 import billsimage from "./assets/billsimage.png";
 
 function UploadPage() {
@@ -147,6 +148,7 @@ function AppContent() {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/receipts" element={<ProtectedRoute><ReceiptsList /></ProtectedRoute>} />
             <Route path="/purchases" element={<ProtectedRoute><PurchasesList /></ProtectedRoute>} />
+            <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
           </Routes>
         </main>
         {!isAuthPage && (

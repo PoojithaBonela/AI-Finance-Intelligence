@@ -42,10 +42,11 @@ export const Login: React.FC = () => {
   const handleGoogleLogin = async () => {
     setError(null);
     try {
+      const redirectTo = `${window.location.origin}/`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo,
         }
       });
       if (oauthError) throw oauthError;
