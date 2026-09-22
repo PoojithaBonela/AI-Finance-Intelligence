@@ -3,8 +3,11 @@ from typing import List
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
 from google.genai import types
 from ..services.cloudinary_service import upload_to_cloudinary, delete_from_cloudinary
-from ..services.ocr import process_document_gemini
-from ..services.validation_service import validate_documents, DocumentValidationResult
+from ..agents.receipt_agent import (
+    validate_documents,
+    process_document_gemini,
+    DocumentValidationResult,
+)
 from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from .categories import ALLOWED_CATEGORIES, FALLBACK_CATEGORY
 from .prompts import CATEGORIZATION_PROMPT
-from app.services.ocr import get_gemini_client
+from app.agents.receipt_agent import get_gemini_client
 import app.database
 
 logger = logging.getLogger(__name__)

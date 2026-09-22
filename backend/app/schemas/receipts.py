@@ -1,6 +1,7 @@
 from typing import List, Optional
 from datetime import date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from ..agents.receipt_agent.date_normalizer import normalize_and_validate_date
 
 class ReceiptItemCreate(BaseModel):
     item_name: str = Field(..., min_length=1)
@@ -33,6 +34,14 @@ class ReceiptCreate(BaseModel):
     
     # Items
     items: List[ReceiptItemCreate] = []
+
+    @field_validator("purchase_date", "due_date", mode="before")
+    @classmethod
+    def normalize_dates(cls, v):
+        if isinstance(v, str):
+            norm = normalize_and_validate_date(v)
+            return norm
+        return v
 
 class ReceiptResponse(BaseModel):
     id: str

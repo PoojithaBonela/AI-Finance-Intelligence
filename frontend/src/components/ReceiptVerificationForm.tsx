@@ -163,44 +163,114 @@ export const ReceiptVerificationForm: React.FC<Props> = ({
     setItems((prev) => prev.filter((it) => it.id !== id));
   };
 
+  const isValidCalendarDate = (year: number, month: number, day: number): boolean => {
+    if (isNaN(year) || isNaN(month) || isNaN(day)) return false;
+    if (year < 1900 || year > 2100) return false;
+    if (month < 1 || month > 12) return false;
+    const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+    const daysInMonth = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    return day >= 1 && day <= daysInMonth[month - 1];
+  };
+
   const normalizeDate = (dStr: string): string | null => {
     if (!dStr) return null;
-    const s = dStr.trim();
-    if (!s) return null;
-    
-    // If it's already YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-      if (!isNaN(Date.parse(s))) return s;
+    let s = dStr.trim();
+    if (!s || ["null", "none", "n/a", "undefined"].includes(s.toLowerCase())) return null;
+
+    // Strip prefixes like "Date:", "Dated:", "On:"
+    s = s.replace(/^(date|dated|on)[\s:]+/i, '').trim();
+
+    // Strip trailing time/timezone (e.g. " 16:48", " 14:22:05", " 04:30 PM", "T14:22:00...", " Time: ...")
+    s = s.replace(/[\s,]+(time|at)[\s:]+.*$/i, '');
+    s = s.replace(/T\d{1,2}:\d{2}(:\d{2})?.*$/, '');
+    s = s.replace(/[\s,]+\d{1,2}:\d{2}(:\d{2})?(\s*(am|pm))?.*$/i, '').trim();
+
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+
+    // 1. ISO format: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
+    const isoMatch = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+    if (isoMatch) {
+      const y = parseInt(isoMatch[1], 10);
+      const m = parseInt(isoMatch[2], 10);
+      const d = parseInt(isoMatch[3], 10);
+      if (isValidCalendarDate(y, m, d)) return `${y}-${pad2(m)}-${pad2(d)}`;
+      return "invalid";
     }
-    
-    // Try native Date parse
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      return d.toISOString().split('T')[0];
-    }
-    
-    // Try DD/MM/YYYY or DD-MM-YYYY
-    const parts = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-    if (parts) {
-      let p1 = parseInt(parts[1], 10);
-      let p2 = parseInt(parts[2], 10);
-      const yyyy = parseInt(parts[3], 10);
-      
-      // If p1 > 12, it's definitely DD/MM
-      if (p1 > 12) {
-        const tmp = p1;
-        p1 = p2;
-        p2 = tmp;
+
+    const MONTHS: Record<string, number> = {
+      jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+      apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+      aug: 8, august: 8, sep: 9, september: 9, oct: 10, october: 10,
+      nov: 11, november: 11, dec: 12, december: 12
+    };
+
+    // 2. Textual month: DD Mon YYYY or DD-Mon-YYYY (e.g. "15 Aug 2024", "15-August-2024", "10-Jul-2024")
+    const textDayFirst = s.match(/^(\d{1,2})[\s\-\/\.]+([a-zA-Z]+)[\s\-\/\.,]+(\d{2,4})$/);
+    if (textDayFirst) {
+      const d = parseInt(textDayFirst[1], 10);
+      const monStr = textDayFirst[2].toLowerCase();
+      let y = parseInt(textDayFirst[3], 10);
+      if (y < 100) y += y < 70 ? 2000 : 1900;
+      if (MONTHS[monStr]) {
+        const m = MONTHS[monStr];
+        if (isValidCalendarDate(y, m, d)) return `${y}-${pad2(m)}-${pad2(d)}`;
       }
-      
-      if (p1 <= 12 && p2 <= 31) {
-         const mm = String(p1).padStart(2, '0');
-         const dd = String(p2).padStart(2, '0');
-         const d2 = new Date(`${yyyy}-${mm}-${dd}`);
-         if (!isNaN(d2.getTime())) return `${yyyy}-${mm}-${dd}`;
-      }
+      return "invalid";
     }
-    
+
+    // 3. Textual month: Mon DD, YYYY (e.g. "Aug 15, 2024", "August 15 2024")
+    const textMonthFirst = s.match(/^([a-zA-Z]+)[\s\-\/\.]+?(\d{1,2})[\s\-\/\.,]+(\d{2,4})$/);
+    if (textMonthFirst) {
+      const monStr = textMonthFirst[1].toLowerCase();
+      const d = parseInt(textMonthFirst[2], 10);
+      let y = parseInt(textMonthFirst[3], 10);
+      if (y < 100) y += y < 70 ? 2000 : 1900;
+      if (MONTHS[monStr]) {
+        const m = MONTHS[monStr];
+        if (isValidCalendarDate(y, m, d)) return `${y}-${pad2(m)}-${pad2(d)}`;
+      }
+      return "invalid";
+    }
+
+    // 4. DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, MM/DD/YYYY
+    const dmyMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    if (dmyMatch) {
+      const p1 = parseInt(dmyMatch[1], 10);
+      const p2 = parseInt(dmyMatch[2], 10);
+      const y = parseInt(dmyMatch[3], 10);
+      let d = p1;
+      let m = p2;
+      if (p1 > 12 && p2 <= 12) {
+        d = p1;
+        m = p2;
+      } else if (p2 > 12 && p1 <= 12) {
+        m = p1;
+        d = p2;
+      }
+      if (isValidCalendarDate(y, m, d)) return `${y}-${pad2(m)}-${pad2(d)}`;
+      return "invalid";
+    }
+
+    // 5. Two-digit year: DD/MM/YY or DD-MM-YY
+    const yyMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})$/);
+    if (yyMatch) {
+      const p1 = parseInt(yyMatch[1], 10);
+      const p2 = parseInt(yyMatch[2], 10);
+      const rawYy = parseInt(yyMatch[3], 10);
+      const y = rawYy < 70 ? 2000 + rawYy : 1900 + rawYy;
+      let d = p1;
+      let m = p2;
+      if (p1 > 12 && p2 <= 12) {
+        d = p1;
+        m = p2;
+      } else if (p2 > 12 && p1 <= 12) {
+        m = p1;
+        d = p2;
+      }
+      if (isValidCalendarDate(y, m, d)) return `${y}-${pad2(m)}-${pad2(d)}`;
+      return "invalid";
+    }
+
     return "invalid";
   };
 

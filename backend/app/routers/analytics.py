@@ -31,6 +31,13 @@ class YearlyTrendItem(BaseModel):
     year: int
     amount: float
 
+class CategoryOverTimeItem(BaseModel):
+    category: str
+    month: str
+    month_number: int
+    amount: float
+    percentage: float  # percentage of that category's annual total
+
 class AnalyticsResponse(BaseModel):
     total_spending: float
     receipt_count: int
@@ -41,6 +48,7 @@ class AnalyticsResponse(BaseModel):
     table_breakdown: List[TableBreakdown]
     monthly_trend: List[MonthlyTrendItem]
     yearly_trend: List[YearlyTrendItem]
+    category_over_time: List[CategoryOverTimeItem]
 
 @router.get("", response_model=AnalyticsResponse)
 async def get_analytics(
@@ -51,6 +59,8 @@ async def get_analytics(
     trend_year: Optional[int] = None,
     trend_currency: Optional[str] = None,
     yearly_trend_currency: Optional[str] = None,
+    cot_year: Optional[int] = None,
+    cot_currency: Optional[str] = None,
     user_id: str = Depends(get_current_user)
 ):
     try:
@@ -66,18 +76,21 @@ async def get_analytics(
             # Check Date filters (applies to both KPIs and Category Breakdown)
             p_date_str = r.get("purchase_date")
             date_matches = True
-            if year is not None or month is not None:
+            if year is not None:
                 if not p_date_str:
                     date_matches = False
                 else:
                     try:
                         dt = datetime.strptime(p_date_str, "%Y-%m-%d")
-                        if year is not None and dt.year != year:
+                        if dt.year != year:
                             date_matches = False
                         if month is not None and dt.month != (month + 1):
                             date_matches = False
                     except ValueError:
                         date_matches = False
+            elif month is not None:
+                # Month is dependent on the selected Year and must never operate independently across all years
+                date_matches = False
             
             if not date_matches:
                 continue
@@ -258,6 +271,57 @@ async def get_analytics(
             for yr, amt in sorted(yearly_dict.items())
         ]
 
+        # 8. Calculate Category Over Time
+        # 14 categories x 12 months grid, filtered by cot_year, converted to cot_currency
+        cot_c = cot_currency
+        # Initialize: {cat: {month_num: amount}}
+        cot_grid = {cat: {m: 0.0 for m in range(1, 13)} for cat in ALLOWED_CATEGORIES}
+
+        if cot_year is not None:
+            for r in receipts:
+                p_date_str = r.get("purchase_date")
+                if not p_date_str:
+                    continue
+                try:
+                    dt = datetime.strptime(p_date_str, "%Y-%m-%d")
+                except ValueError:
+                    continue
+
+                if dt.year != cot_year:
+                    continue
+
+                amt = float(r.get("total_amount", 0.0))
+                r_curr = r.get("currency")
+                cat = r.get("category") or "Other"
+                if cat not in ALLOWED_CATEGORIES:
+                    cat = "Other"
+
+                if cot_c and r_curr and r_curr != cot_c:
+                    try:
+                        rate, _ = await _fetch_rate(r_curr, cot_c, p_date_str)
+                        amt = amt * rate
+                    except RuntimeError:
+                        pass
+
+                cot_grid[cat][dt.month] += amt
+
+        category_over_time = []
+        for cat in ALLOWED_CATEGORIES:
+            monthly_totals = cot_grid[cat]
+            annual_total = sum(monthly_totals.values())
+            for m in range(1, 13):
+                m_amt = monthly_totals[m]
+                perc = (m_amt / annual_total * 100) if annual_total > 0 else 0.0
+                category_over_time.append(
+                    CategoryOverTimeItem(
+                        category=cat,
+                        month=MONTH_NAMES[m - 1],
+                        month_number=m,
+                        amount=round(m_amt, 2),
+                        percentage=round(perc, 2)
+                    )
+                )
+
         return AnalyticsResponse(
             total_spending=round(total_spending, 2),
             receipt_count=receipt_count,
@@ -267,7 +331,8 @@ async def get_analytics(
             category_breakdown=category_breakdown,
             table_breakdown=table_breakdown,
             monthly_trend=monthly_trend,
-            yearly_trend=yearly_trend
+            yearly_trend=yearly_trend,
+            category_over_time=category_over_time
         )
 
     except Exception as e:

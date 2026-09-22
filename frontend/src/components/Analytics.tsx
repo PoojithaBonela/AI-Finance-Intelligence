@@ -67,6 +67,14 @@ interface YearlyTrendItem {
   amount: number;
 }
 
+interface CategoryOverTimeItem {
+  category: string;
+  month: string;
+  month_number: number;
+  amount: number;
+  percentage: number;
+}
+
 interface AnalyticsData {
   total_spending: number;
   receipt_count: number;
@@ -77,6 +85,7 @@ interface AnalyticsData {
   table_breakdown: { category: string; transaction_count: number; total: number; percentage: number }[];
   monthly_trend: MonthlyTrendItem[];
   yearly_trend: YearlyTrendItem[];
+  category_over_time: CategoryOverTimeItem[];
 }
 
 // ─── Monthly Trend SVG Chart ──────────────────────────────────────────────────
@@ -428,6 +437,8 @@ export const Analytics: React.FC = () => {
   // Global filter state
   const [availableYears, setAvailableYears] = useState<string[]>([]);
   const [availableCurrencies, setAvailableCurrencies] = useState<string[]>([]);
+  const [defaultYear, setDefaultYear] = useState<string>(new Date().getFullYear().toString());
+  const [defaultCurrency, setDefaultCurrency] = useState<string | null>(null);
   const [activeYear, setActiveYear] = useState<string | null>(null);
   const [activeMonth, setActiveMonth] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -443,6 +454,12 @@ export const Analytics: React.FC = () => {
   const [yearlyTrendCurrency, setYearlyTrendCurrency] = useState<string | null>(null);
   const [yearlyTrendLoading, setYearlyTrendLoading] = useState(false);
   const [yearlyTrendData, setYearlyTrendData] = useState<YearlyTrendItem[]>([]);
+
+  // ── Local Category Over Time state ─────────────────────────────────────
+  const [cotYear, setCotYear] = useState<string | null>(null);
+  const [cotCurrency, setCotCurrency] = useState<string | null>(null);
+  const [cotLoading, setCotLoading] = useState(false);
+  const [cotData, setCotData] = useState<CategoryOverTimeItem[]>([]);
 
   // Shared analytics data (KPIs, chart, table)
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -465,8 +482,13 @@ export const Analytics: React.FC = () => {
 
         receipts.forEach(r => {
           if (r.purchase_date) {
-            const d = new Date(r.purchase_date);
-            if (!isNaN(d.getTime())) years.add(d.getFullYear().toString());
+            const yrMatch = String(r.purchase_date).match(/^(\d{4})/);
+            if (yrMatch) {
+              years.add(yrMatch[1]);
+            } else {
+              const d = new Date(r.purchase_date);
+              if (!isNaN(d.getTime())) years.add(d.getFullYear().toString());
+            }
           }
           if (r.currency) currencies.add(r.currency);
         });
@@ -476,35 +498,39 @@ export const Analytics: React.FC = () => {
 
         const currentYearStr = new Date().getFullYear().toString();
 
-        // Pick best default year
-        let defaultYear = currentYearStr;
+        // YEAR requirement:
+        // - Default to current year if it contains receipts.
+        // - Otherwise default to the most recent available year containing receipts.
+        // - If there are no receipts at all, default to current year and show empty state.
+        let computedDefaultYear = currentYearStr;
         if (sortedYears.length > 0) {
           if (sortedYears.includes(currentYearStr)) {
-            defaultYear = currentYearStr;
+            computedDefaultYear = currentYearStr;
           } else {
-            let closest = sortedYears[0];
-            let minDiff = Math.abs(parseInt(closest) - parseInt(currentYearStr));
-            for (const y of sortedYears) {
-              const diff = Math.abs(parseInt(y) - parseInt(currentYearStr));
-              if (diff < minDiff) { minDiff = diff; closest = y; }
-            }
-            defaultYear = closest;
+            computedDefaultYear = sortedYears[0];
           }
         } else {
+          computedDefaultYear = currentYearStr;
           sortedYears.push(currentYearStr);
         }
 
+        const defaultCurr = sortedCurr.length > 0 ? sortedCurr[0] : null;
+
+        setDefaultYear(computedDefaultYear);
+        setDefaultCurrency(defaultCurr);
+
         setAvailableYears(sortedYears);
         setAvailableCurrencies(sortedCurr);
-        setActiveYear(defaultYear);
+        setActiveYear(computedDefaultYear);
 
-        const defaultCurr = sortedCurr.length > 0 ? sortedCurr[0] : null;
         if (defaultCurr) setDisplayCurrency(defaultCurr);
 
-        // Trend chart also starts with the same default year & currency (independently)
-        setTrendYear(defaultYear);
+        // Trend charts also start with the same default year & currency (independently)
+        setTrendYear(computedDefaultYear);
         setTrendCurrency(defaultCurr);
         setYearlyTrendCurrency(defaultCurr);
+        setCotYear(computedDefaultYear);
+        setCotCurrency(defaultCurr);
       } catch (err: any) {
         console.error(err);
       } finally {
@@ -594,11 +620,37 @@ export const Analytics: React.FC = () => {
     fetchYearlyTrend();
   }, [yearlyTrendCurrency, initLoading, session]);
 
+  // ── 5. Fetch Category Over Time independently ───────────────────────────
+  useEffect(() => {
+    if (initLoading || cotYear === null) return;
+    const fetchCot = async () => {
+      setCotLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.append("cot_year", cotYear);
+        if (cotCurrency) params.append("cot_currency", cotCurrency);
+
+        const headers: Record<string, string> = {};
+        if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
+        const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/analytics?${params.toString()}`, { headers });
+        if (!res.ok) throw new Error("Failed to load category over time data");
+        const json: AnalyticsData = await res.json();
+        setCotData(json.category_over_time);
+      } catch (err: any) {
+        console.error(err);
+      } finally {
+        setCotLoading(false);
+      }
+    };
+    fetchCot();
+  }, [cotYear, cotCurrency, initLoading, session]);
+
   const clearAllFilters = () => {
-    setActiveYear(null);
+    setActiveYear(defaultYear);
     setActiveMonth(null);
     setActiveCategory(null);
-    if (availableCurrencies.length > 0) setDisplayCurrency(availableCurrencies[0]);
+    if (defaultCurrency) setDisplayCurrency(defaultCurrency);
   };
 
   if (initLoading) {
@@ -610,7 +662,11 @@ export const Analytics: React.FC = () => {
     );
   }
 
-  const filtersActive = activeYear !== null || activeMonth !== null || activeCategory !== null;
+  const filtersActive =
+    (activeYear !== null && activeYear !== defaultYear) ||
+    activeMonth !== null ||
+    activeCategory !== null ||
+    (defaultCurrency !== null && displayCurrency !== defaultCurrency);
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-12 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -626,22 +682,42 @@ export const Analytics: React.FC = () => {
           label="Year"
           options={availableYears.map(y => ({ label: y, value: y }))}
           value={activeYear}
-          onChange={setActiveYear}
-          onClear={() => setActiveYear(null)}
+          onChange={(y) => {
+            setActiveYear(y);
+            setActiveMonth(null); // Whenever Year changes, automatically reset Month to All Months
+          }}
+          onClear={() => {
+            setActiveYear(defaultYear);
+            setActiveMonth(null);
+          }}
+          canClear={activeYear !== defaultYear}
         />
         <FilterDropdown
           label="Month"
-          options={months.map((m, i) => ({ label: m, value: i.toString() }))}
+          options={[
+            { label: "All Months", value: "all" },
+            ...months.map((m, i) => ({ label: m, value: i.toString() }))
+          ]}
           value={activeMonth}
-          onChange={setActiveMonth}
+          onChange={(v) => {
+            setActiveMonth(v === "all" ? null : v);
+          }}
           onClear={() => setActiveMonth(null)}
+          canClear={activeMonth !== null}
+          disabled={!activeYear}
         />
         <FilterDropdown
           label="Category"
-          options={CATEGORIES.map(c => ({ label: c, value: c }))}
+          options={[
+            { label: "All Categories", value: "all" },
+            ...CATEGORIES.map(c => ({ label: c, value: c }))
+          ]}
           value={activeCategory}
-          onChange={setActiveCategory}
+          onChange={(v) => {
+            setActiveCategory(v === "all" ? null : v);
+          }}
           onClear={() => setActiveCategory(null)}
+          canClear={activeCategory !== null}
         />
         {availableCurrencies.length > 0 && (
           <FilterDropdown
@@ -649,7 +725,10 @@ export const Analytics: React.FC = () => {
             options={availableCurrencies.map(c => ({ label: c, value: c }))}
             value={displayCurrency}
             onChange={setDisplayCurrency}
-            onClear={() => {}}
+            onClear={() => {
+              if (defaultCurrency) setDisplayCurrency(defaultCurrency);
+            }}
+            canClear={defaultCurrency !== null && displayCurrency !== defaultCurrency}
           />
         )}
         {filtersActive && (
@@ -945,6 +1024,413 @@ export const Analytics: React.FC = () => {
 
       </div>
 
+      {/* ── Section: Spending by Category Over Time (Heatmap) ── */}
+      <div className="mt-6">
+        <h2 className="text-[19px] font-bold text-white tracking-tight">Spending by Category Over Time</h2>
+        <p className="text-white/50 text-xs font-support mt-0.5">See how your spending varies across categories each month.</p>
+        <div className="mt-2.5 border-t border-white/10 mb-3" />
+
+        <div className="bg-[#F5F3EA] rounded-2xl p-3.5 sm:p-4 border border-[#171A3A]/10 shadow-sm">
+          {/* Card header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 className="text-base font-bold text-[#171A3A]">Spending by Category Over Time</h3>
+              <p className="text-[#171A3A]/60 text-xs font-support mt-0.5">See how your spending varies across categories each month.</p>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+              <select
+                value={cotYear || ""}
+                onChange={e => setCotYear(e.target.value)}
+                className="text-xs font-semibold text-[#171A3A] bg-[#171A3A]/[0.06] hover:bg-[#171A3A]/[0.1] border border-[#171A3A]/10 rounded-lg px-2 py-1 cursor-pointer outline-none transition-colors"
+              >
+                {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              {availableCurrencies.length > 0 && (
+                <select
+                  value={cotCurrency || ""}
+                  onChange={e => setCotCurrency(e.target.value)}
+                  className="text-xs font-semibold text-[#171A3A] bg-[#171A3A]/[0.06] hover:bg-[#171A3A]/[0.1] border border-[#171A3A]/10 rounded-lg px-2 py-1 cursor-pointer outline-none transition-colors"
+                >
+                  {availableCurrencies.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              )}
+            </div>
+          </div>
+
+          {cotLoading ? (
+            <div className="space-y-[2px]">
+              {Array.from({ length: 14 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-[2px]">
+                  <div className="w-[130px] shrink-0 h-[25px] bg-slate-200 animate-pulse rounded-[3px]" />
+                  <div className="flex-1 h-[25px] bg-slate-200 animate-pulse rounded-[3px]" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <HeatmapChart data={cotData} currency={cotCurrency} />
+          )}
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
+// ─── Spending by Category Over Time — Heatmap ────────────────────────────────
+
+// Category hex colors (extracted from CATEGORY_COLORS Tailwind strings)
+const CAT_HEX: Record<string, string> = {
+  "Food & Dining":     "#D97706",
+  "Groceries":         "#16A34A",
+  "Shopping":          "#9333EA",
+  "Transportation":    "#2563EB",
+  "Healthcare":        "#0D9488",
+  "Utilities":         "#D97706",
+  "Entertainment":     "#DB2777",
+  "Travel":            "#4F46E5",
+  "Education":         "#0891B2",
+  "Finance":           "#059669",
+  "Business":          "#1E3A8A",
+  "Gifts & Donations": "#E11D48",
+  "Home & Maintenance":"#92400E",
+  "Other":             "#64748B",
+};
+
+const HEATMAP_SHORT_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const FULL_MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+const CATEGORY_ORDER = [
+  "Food & Dining","Groceries","Shopping","Transportation","Healthcare",
+  "Utilities","Entertainment","Travel","Education","Finance",
+  "Business","Gifts & Donations","Home & Maintenance","Other",
+];
+
+// Parse a hex color into { r, g, b }
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.replace("#", "");
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
+const BG_RGB = { r: 245, g: 243, b: 234 }; // Card cream background #F5F3EA
+
+/**
+ * Calculates the cell background color and readable text color based on spending amount and row maximum.
+ * Category determines hue; monthly spending determines intensity.
+ * Distinct tiers:
+ * - 0                 → very faint tint (t = 0.08)
+ * - 0 < ratio < 0.25  → light (t = 0.25)
+ * - 0.25 <= ratio < 0.50 → light-medium (t = 0.48)
+ * - 0.50 <= ratio < 0.75 → medium (t = 0.72)
+ * - 0.75 <= ratio <= 1.00 → strong (t = 0.95)
+ */
+function getCellStyling(hex: string, amt: number, maxAmt: number): { bg: string; textColor: string } {
+  const { r, g, b } = hexToRgb(hex);
+
+  let t = 0.08; // very faint for 0 spend
+  if (amt > 0 && maxAmt > 0) {
+    const ratio = Math.min(amt / maxAmt, 1);
+    if (ratio < 0.25) {
+      t = 0.25;
+    } else if (ratio < 0.50) {
+      t = 0.48;
+    } else if (ratio < 0.75) {
+      t = 0.72;
+    } else {
+      t = 0.95;
+    }
+  }
+
+  const cr = Math.round(BG_RGB.r + (r - BG_RGB.r) * t);
+  const cg = Math.round(BG_RGB.g + (g - BG_RGB.g) * t);
+  const cb = Math.round(BG_RGB.b + (b - BG_RGB.b) * t);
+
+  // Perceived luminance: 0.299*R + 0.587*G + 0.114*B
+  const luminance = 0.299 * cr + 0.587 * cg + 0.114 * cb;
+
+  let textColor: string;
+  if (amt === 0) {
+    textColor = "rgba(23, 26, 58, 0.35)";
+  } else if (luminance < 145) {
+    textColor = "rgba(255, 255, 255, 0.95)"; // white text on darker / saturated cells
+  } else {
+    textColor = "#171A3A"; // dark navy text on lighter cells
+  }
+
+  return {
+    bg: `rgb(${cr},${cg},${cb})`,
+    textColor,
+  };
+}
+
+/**
+ * Formats monetary amounts for cell display.
+ * Displays exact values cleanly (e.g. ₹4,320, ₹2,850). Zero returns empty string.
+ */
+function formatCellAmount(val: number, code: string | null): string {
+  if (val <= 0) return "";
+  const s = sym(code);
+  if (val >= 10_000_000) {
+    return `${s}${(val / 1_000_000).toFixed(1)}M`;
+  }
+  if (Number.isInteger(val) || val >= 100) {
+    return `${s}${Math.round(val).toLocaleString()}`;
+  }
+  return `${s}${val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
+
+const HeatmapChart: React.FC<{ data: CategoryOverTimeItem[]; currency: string | null }> = ({ data, currency }) => {
+  const [tooltip, setTooltip] = useState<{
+    title: string;
+    subtitle: string;
+    amount: number;
+    top: number;
+    left: number;
+    color?: string;
+  } | null>(null);
+
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-40 bg-[#171A3A]/5 rounded-xl border border-dashed border-[#171A3A]/10">
+        <p className="text-[#171A3A]/40 text-sm">No spending data for the selected year.</p>
+      </div>
+    );
+  }
+
+  // Build lookup: category → month_number → amount
+  const lookup: Record<string, Record<number, number>> = {};
+  for (const item of data) {
+    if (!lookup[item.category]) lookup[item.category] = {};
+    lookup[item.category][item.month_number] = item.amount;
+  }
+
+  // Per-category max (for color intensity) and annual row total
+  const catMax: Record<string, number> = {};
+  const catTotal: Record<string, number> = {};
+  for (const cat of CATEGORY_ORDER) {
+    const vals = Object.values(lookup[cat] ?? {});
+    catMax[cat] = vals.length ? Math.max(...vals) : 0;
+    catTotal[cat] = vals.reduce((sum, v) => sum + v, 0);
+  }
+
+  // Monthly totals across all categories (1..12)
+  const monthTotals: Record<number, number> = {};
+  for (let m = 1; m <= 12; m++) {
+    monthTotals[m] = CATEGORY_ORDER.reduce((sum, cat) => sum + (lookup[cat]?.[m] ?? 0), 0);
+  }
+
+  // Grand total for the entire year
+  const grandTotal = Object.values(catTotal).reduce((sum, v) => sum + v, 0);
+
+  return (
+    <div className="relative">
+      {/* Scrollable heatmap container */}
+      <div className="overflow-x-auto pb-0.5">
+        <div style={{ minWidth: "700px" }}>
+
+          {/* 1. Header row: Category + 12 Months + Total */}
+          <div className="flex items-center gap-[2px] mb-1.5">
+            {/* Category column header spacer */}
+            <div
+              style={{ width: "125px" }}
+              className="shrink-0 text-[10px] font-bold text-[#171A3A]/40 text-right pr-2.5 uppercase tracking-wider select-none"
+            >
+              Category
+            </div>
+
+            {/* 12 Month columns */}
+            {HEATMAP_SHORT_MONTHS.map(m => (
+              <div
+                key={m}
+                className="flex-1 text-center text-[10px] font-bold text-[#171A3A]/70 uppercase tracking-wider select-none"
+                style={{ minWidth: "38px" }}
+              >
+                {m}
+              </div>
+            ))}
+
+            {/* Total column header */}
+            <div
+              style={{ width: "58px", minWidth: "58px" }}
+              className="shrink-0 text-center text-[10px] font-extrabold text-[#171A3A] uppercase tracking-wider select-none"
+            >
+              Total
+            </div>
+          </div>
+
+          {/* 2. 14 Category rows */}
+          <div className="flex flex-col gap-[2px]">
+            {CATEGORY_ORDER.map(cat => {
+              const hex = CAT_HEX[cat] ?? "#64748B";
+              const maxAmt = catMax[cat];
+              const totalAmt = catTotal[cat] ?? 0;
+
+              return (
+                <div key={cat} className="flex items-center gap-[2px]">
+                  {/* Category label on the left */}
+                  <div
+                    className="shrink-0 text-[10px] sm:text-[10.5px] font-semibold text-[#171A3A]/85 text-right pr-2.5 leading-none truncate select-none"
+                    style={{ width: "125px" }}
+                    title={cat}
+                  >
+                    {cat}
+                  </div>
+
+                  {/* 12 Month cells */}
+                  {Array.from({ length: 12 }, (_, mi) => {
+                    const mNum = mi + 1;
+                    const amt = lookup[cat]?.[mNum] ?? 0;
+                    const { bg, textColor } = getCellStyling(hex, amt, maxAmt);
+
+                    return (
+                      <div
+                        key={mNum}
+                        className="flex-1 h-[25px] rounded-[3px] flex items-center justify-center cursor-default transition-all duration-150 hover:scale-[1.12] hover:z-20 hover:shadow-md relative"
+                        style={{ backgroundColor: bg, minWidth: "38px" }}
+                        onMouseEnter={e => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          setTooltip({
+                            title: cat,
+                            subtitle: FULL_MONTH_NAMES[mi],
+                            amount: amt,
+                            color: hex,
+                            top: rect.top,
+                            left: rect.left + rect.width / 2,
+                          });
+                        }}
+                        onMouseLeave={() => setTooltip(null)}
+                      >
+                        {amt > 0 && (
+                          <span
+                            className="text-[9px] sm:text-[9.5px] font-bold tracking-tight select-none leading-none px-0.5 truncate text-center"
+                            style={{ color: textColor }}
+                          >
+                            {formatCellAmount(amt, currency)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Category Row Total (across all months) */}
+                  <div
+                    style={{ width: "58px", minWidth: "58px" }}
+                    className="shrink-0 h-[25px] rounded-[3px] flex items-center justify-center cursor-default bg-[#171A3A]/[0.05] border border-[#171A3A]/10 transition-all duration-150 hover:bg-[#171A3A]/[0.09] hover:scale-[1.08] hover:z-20 hover:shadow-md relative"
+                    onMouseEnter={e => {
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setTooltip({
+                        title: cat,
+                        subtitle: "Annual Category Total",
+                        amount: totalAmt,
+                        color: hex,
+                        top: rect.top,
+                        left: rect.left + rect.width / 2,
+                      });
+                    }}
+                    onMouseLeave={() => setTooltip(null)}
+                  >
+                    {totalAmt > 0 && (
+                      <span className="text-[9px] sm:text-[9.5px] font-extrabold tracking-tight select-none leading-none px-0.5 truncate text-center text-[#171A3A]">
+                        {formatCellAmount(totalAmt, currency)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 3. Summary row: Monthly Totals + Whole Year Grand Total */}
+          <div className="mt-1 pt-1 border-t border-[#171A3A]/15 flex items-center gap-[2px]">
+            {/* Row Label */}
+            <div
+              style={{ width: "125px" }}
+              className="shrink-0 text-[10px] sm:text-[10.5px] font-extrabold text-[#171A3A] text-right pr-2.5 leading-none uppercase tracking-wider select-none"
+            >
+              Total
+            </div>
+
+            {/* 12 Monthly Totals */}
+            {Array.from({ length: 12 }, (_, mi) => {
+              const mNum = mi + 1;
+              const mAmt = monthTotals[mNum] ?? 0;
+
+              return (
+                <div
+                  key={mNum}
+                  className="flex-1 h-[25px] rounded-[3px] flex items-center justify-center cursor-default bg-[#171A3A]/[0.05] border border-[#171A3A]/10 transition-all duration-150 hover:bg-[#171A3A]/[0.09] hover:scale-[1.08] hover:z-20 hover:shadow-md relative"
+                  style={{ minWidth: "38px" }}
+                  onMouseEnter={e => {
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setTooltip({
+                      title: "All Categories",
+                      subtitle: `${FULL_MONTH_NAMES[mi]} Total`,
+                      amount: mAmt,
+                      top: rect.top,
+                      left: rect.left + rect.width / 2,
+                    });
+                  }}
+                  onMouseLeave={() => setTooltip(null)}
+                >
+                  {mAmt > 0 && (
+                    <span className="text-[9px] sm:text-[9.5px] font-extrabold tracking-tight select-none leading-none px-0.5 truncate text-center text-[#171A3A]">
+                      {formatCellAmount(mAmt, currency)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Grand Total for the Whole Year */}
+            <div
+              style={{ width: "58px", minWidth: "58px" }}
+              className="shrink-0 h-[25px] rounded-[3px] flex items-center justify-center cursor-default bg-[#164A3A] text-white shadow-sm transition-all duration-150 hover:bg-[#0D7C66] hover:scale-[1.1] hover:z-20 hover:shadow-md relative"
+              onMouseEnter={e => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                setTooltip({
+                  title: "Annual Grand Total",
+                  subtitle: "Whole Year (All Categories)",
+                  amount: grandTotal,
+                  color: "#00BFA6",
+                  top: rect.top,
+                  left: rect.left + rect.width / 2,
+                });
+              }}
+              onMouseLeave={() => setTooltip(null)}
+            >
+              {grandTotal > 0 && (
+                <span className="text-[9px] sm:text-[9.5px] font-extrabold tracking-tight select-none leading-none px-0.5 truncate text-center text-white">
+                  {formatCellAmount(grandTotal, currency)}
+                </span>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Floating tooltip on hover */}
+      {tooltip && (
+        <div
+          className="fixed pointer-events-none z-50 bg-[#171A3A] text-white rounded-xl px-3.5 py-2 text-xs shadow-2xl border border-white/10"
+          style={{
+            top: tooltip.top - 8,
+            left: tooltip.left,
+            transform: "translate(-50%, -100%)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <p className="font-semibold text-white/60 text-[10px] uppercase tracking-wider">{tooltip.subtitle}</p>
+          <p className="font-bold text-[13px] mt-0.5" style={{ color: tooltip.color ?? "#ffffff" }}>{tooltip.title}</p>
+          <p className="font-extrabold text-[13px] mt-0.5 text-white">{fmtAmt(tooltip.amount, currency)}</p>
+        </div>
+      )}
     </div>
   );
 };
