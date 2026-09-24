@@ -211,7 +211,7 @@ export const UploadZone: React.FC = () => {
           style={{ backgroundColor: "#F5F3EA" }}
         >
           <input ref={fileInputRefPhysical} type="file" className="hidden" accept=".jpg,.jpeg,.png" multiple disabled={isUploading} onChange={(e) => handleFileChange(e, "physical")} />
-          <input ref={fileInputRefCamera} type="file" className="hidden" accept="image/*" capture="environment" multiple disabled={isUploading} onChange={(e) => handleFileChange(e, "physical")} />
+          <input ref={fileInputRefCamera} type="file" className="hidden" accept="image/*" capture="environment" disabled={isUploading} onChange={(e) => handleFileChange(e, "physical")} />
           <div className="w-14 h-14 rounded-2xl bg-[#0D7C66]/10 flex items-center justify-center mb-5">
             <FileImage className="w-7 h-7 text-[#0D7C66]" strokeWidth={1.5} />
           </div>

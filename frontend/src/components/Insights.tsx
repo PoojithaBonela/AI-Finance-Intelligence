@@ -10,6 +10,8 @@ import {
   User,
   Brain,
   Loader2,
+  Menu,
+  X,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -95,6 +97,7 @@ export const Insights: React.FC = () => {
   const [error, setError]                               = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId]                     = useState<string | null>(null);
   const [activeHeaderOptions, setActiveHeaderOptions]   = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen]       = useState(false);
 
   const messagesAreaRef = useRef<HTMLDivElement>(null);
   const textareaRef     = useRef<HTMLTextAreaElement>(null);
@@ -204,6 +207,7 @@ export const Insights: React.FC = () => {
 
   /* ─── 1. New Chat Flow ─────────────────────────────────────────────────── */
   const handleNewChat = async () => {
+    setMobileSidebarOpen(false);
     try {
       setError(null);
       const res = await fetch(`${API_URL}/api/insights/conversations`, {
@@ -229,6 +233,7 @@ export const Insights: React.FC = () => {
 
   /* ─── 2. Select Conversation ───────────────────────────────────────────── */
   const handleSelectConversation = (id: string) => {
+    setMobileSidebarOpen(false);
     if (activeId === id) return;
     setActiveId(id);
     setInput("");
@@ -346,15 +351,35 @@ export const Insights: React.FC = () => {
   return (
     <div className="ins-workspace">
 
-      {/* ─── Left Sidebar ─────────────────────────────────────────── */}
-      <aside className="ins-sidebar">
+      {/* Mobile Drawer Backdrop Overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="ins-sidebar-overlay"
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
-        {/* Top: + New Chat Button */}
+      {/* ─── Left Sidebar ─────────────────────────────────────────── */}
+      <aside className={`ins-sidebar ${mobileSidebarOpen ? "open" : ""}`}>
+
+        {/* Top: + New Chat Button & Mobile Close Button */}
         <div className="ins-sidebar-top">
-          <button className="ins-new-chat-btn" onClick={handleNewChat}>
-            <MessageSquarePlus size={16} />
-            <span>+ New Chat</span>
-          </button>
+          <div className="ins-sidebar-top-row">
+            <button className="ins-new-chat-btn" onClick={handleNewChat}>
+              <MessageSquarePlus size={16} />
+              <span>+ New Chat</span>
+            </button>
+            <button
+              type="button"
+              className="ins-sidebar-close-btn"
+              onClick={() => setMobileSidebarOpen(false)}
+              aria-label="Close conversation menu"
+              title="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Conversation List */}
@@ -426,13 +451,24 @@ export const Insights: React.FC = () => {
 
         {/* Header */}
         <header className="ins-chat-header">
-          <div className="ins-chat-header-info">
-            <h2 className="ins-chat-header-title">
-              {activeConv ? activeConv.title : "Ask TracePay anything"}
-            </h2>
-            <span className="ins-chat-header-sub">
-              {activeConv ? `Started on ${formatDate(activeConv.created_at)}` : "Start a new conversation"}
-            </span>
+          <div className="ins-chat-header-left">
+            <button
+              type="button"
+              className="ins-mobile-menu-btn"
+              onClick={() => setMobileSidebarOpen(true)}
+              aria-label="Open conversation menu"
+              title="Conversations"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="ins-chat-header-info">
+              <h2 className="ins-chat-header-title">
+                {activeConv ? activeConv.title : "Ask TracePay anything"}
+              </h2>
+              <span className="ins-chat-header-sub">
+                {activeConv ? `Started on ${formatDate(activeConv.created_at)}` : "Start a new conversation"}
+              </span>
+            </div>
           </div>
           <div className="relative">
             <button
