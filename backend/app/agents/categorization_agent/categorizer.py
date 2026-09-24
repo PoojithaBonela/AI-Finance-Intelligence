@@ -72,10 +72,11 @@ def run_categorization(receipt_data: dict) -> str:
         logger.error(f"DEBUG_AGENT2: Error during categorization: {e}", exc_info=True)
         return FALLBACK_CATEGORY
 
-async def categorize_receipt_background(receipt_id: str, receipt_data: dict):
+async def categorize_receipt_background(receipt_id: str, receipt_data: dict, user_id: Optional[str] = None):
     """
     Background task that calls Gemini and updates the Supabase record.
     Catches all exceptions to ensure it doesn't break the main thread.
+    Also triggers Agent 3's receipt embedding pipeline once categorization completes.
     """
     try:
         logger.info(f"DEBUG_AGENT2: Agent 2 started for receipt ID: {receipt_id}")
@@ -96,3 +97,16 @@ async def categorize_receipt_background(receipt_id: str, receipt_data: dict):
             
     except Exception as e:
         logger.error(f"DEBUG_AGENT2: Failed background categorization for {receipt_id}: {e}", exc_info=True)
+
+    # Trigger Agent 3 Embedding Pipeline (Phase 3.2)
+    if user_id:
+        try:
+            from app.agents.insights_agent.embedding import process_receipt_embedding_background
+            await process_receipt_embedding_background(receipt_id, user_id)
+        except Exception as emb_e:
+            logger.error(
+                "Failed to trigger embedding for receipt %s: %s",
+                receipt_id,
+                emb_e,
+                exc_info=True,
+            )

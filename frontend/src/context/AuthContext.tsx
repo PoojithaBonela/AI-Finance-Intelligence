@@ -17,21 +17,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let initialSessionHandled = false;
 
-    // Listen for auth changes
+    // Set up listener FIRST — in modern Supabase JS v2 this fires an
+    // INITIAL_SESSION event synchronously, which is the authoritative
+    // source for the persisted + refreshed session.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
+        initialSessionHandled = true;
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
       }
     );
+
+    // Fallback for older Supabase versions that don't emit INITIAL_SESSION.
+    // Only apply if onAuthStateChange hasn't already provided the session.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!initialSessionHandled) {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    });
 
     return () => {
       subscription.unsubscribe();

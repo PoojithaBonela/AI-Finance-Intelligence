@@ -46,9 +46,9 @@ export const Navbar: React.FC = () => {
                 <NavLink to="/analytics" className={({ isActive }) => `${baseLinkCls} ${isActive ? activeLinkCls : inactiveLinkCls}`}>
                   Analytics
                 </NavLink>
-                <a href="#" className="text-sm font-medium text-slate-500 hover:text-brand-navy transition-colors py-1">
+                <NavLink to="/insights" className={({ isActive }) => `${baseLinkCls} ${isActive ? activeLinkCls : inactiveLinkCls}`}>
                   AI Insights
-                </a>
+                </NavLink>
               </>
             )}
           </div>
@@ -155,13 +155,13 @@ export const Navbar: React.FC = () => {
             >
               Analytics
             </NavLink>
-            <a 
-              href="#" 
+            <NavLink 
+              to="/insights" 
               onClick={() => setMobileMenuOpen(false)}
-              className="px-4 py-3 rounded-xl text-base font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+              className={({ isActive }) => `px-4 py-3 rounded-xl text-base font-semibold transition-colors ${isActive ? "bg-[#0D7C66]/10 text-[#0D7C66]" : "text-slate-600 hover:bg-slate-50"}`}
             >
               AI Insights
-            </a>
+            </NavLink>
             
             <div className="h-px bg-slate-100 my-2"></div>
             

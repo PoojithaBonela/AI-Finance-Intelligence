@@ -217,8 +217,8 @@ async def create_receipt(receipt_in: ReceiptCreate, background_tasks: Background
         # 3. Assemble response
         created_receipt["items"] = created_items
 
-        # 4. Trigger background categorization
-        background_tasks.add_task(categorize_receipt_background, receipt_id, created_receipt)
+        # 4. Trigger background categorization and embedding pipeline
+        background_tasks.add_task(categorize_receipt_background, receipt_id, created_receipt, user_id)
 
         return created_receipt
 

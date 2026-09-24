@@ -10,6 +10,7 @@ import { Login } from "./components/Login";
 import { Signup } from "./components/Signup";
 import { ResetPassword } from "./components/ResetPassword";
 import { Analytics } from "./components/Analytics";
+import { Insights } from "./components/Insights";
 import billsimage from "./assets/billsimage.png";
 
 function UploadPage() {
@@ -131,15 +132,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function AppContent() {
   const location = useLocation();
   const isAuthPage = ["/login", "/signup", "/reset-password"].includes(location.pathname);
+  const isInsightsPage = location.pathname === "/insights";
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#11152F] text-white relative overflow-hidden">
+    <div className={`flex flex-col ${isInsightsPage ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-[#11152F] text-white relative overflow-hidden`}>
       {/* Global Moving Turquoise Gradient */}
       <div className="absolute top-[-20%] left-[-10%] w-[120%] h-[1200px] bg-gradient-to-br from-transparent via-[#00BFA6]/15 to-[#55D6C2]/10 blur-[120px] rounded-full pointer-events-none animate-pan z-0"></div>
       
-      <div className="relative z-10 flex flex-col min-h-screen">
+      <div className={`relative z-10 flex flex-col ${isInsightsPage ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
         {!isAuthPage && <Navbar />}
-        <main className={`flex-1 flex flex-col ${isAuthPage ? '' : 'pb-16'}`}>
+        <main className={`flex-1 flex flex-col ${isAuthPage ? '' : isInsightsPage ? 'overflow-hidden min-h-0 pt-8 pb-6 px-4 sm:px-6' : 'pb-16'}`}>
           <Routes>
             <Route path="/" element={<Navigate to="/upload" replace />} />
             <Route path="/upload" element={<UploadPage />} />
@@ -149,9 +151,10 @@ function AppContent() {
             <Route path="/receipts" element={<ProtectedRoute><ReceiptsList /></ProtectedRoute>} />
             <Route path="/purchases" element={<ProtectedRoute><PurchasesList /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+            <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
           </Routes>
         </main>
-        {!isAuthPage && (
+        {!isAuthPage && !isInsightsPage && (
           <footer className="py-6 text-center text-xs text-white/40 font-support">
             &copy; {new Date().getFullYear()} TracePay Intelligence. All rights reserved.
           </footer>
